@@ -1,0 +1,21 @@
+{
+  "name": "skillswap-root",
+  "version": "1.0.0",
+  "description": "SkillSwap — Skill Exchange Platform (MERN Stack)",
+  "private": true,
+  "scripts": {
+    "server:install": "npm --prefix server install",
+    "client:install": "npm --prefix client install",
+    "install:all": "npm run server:install && npm run client:install",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "seed": "npm --prefix server run seed:all",
+    "seed:all": "npm --prefix server run seed:all",
+    "seed:admin": "npm --prefix server run seed:admin",
+    "seed:categories": "npm --prefix server run seed:categories",
+    "test:server": "npm --prefix server test"
+  },
+  "keywords": ["mern", "skill-exchange", "peer-learning", "socket.io", "react", "mongodb"],
+  "author": "",
+  "license": "ISC"
+}
