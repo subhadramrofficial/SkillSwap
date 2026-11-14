@@ -1,25 +1,32 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
-const keyId = process.env.RAZORPAY_KEY_ID || '';
-const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
+const getKeyId = () => (process.env.RAZORPAY_KEY_ID || '').trim();
+const getKeySecret = () => (process.env.RAZORPAY_KEY_SECRET || '').trim();
 
-let razorpayInstance = null;
+/**
+ * Returns a configured Razorpay instance or null if credentials are not configured
+ */
+const getRazorpay = () => {
+  const key_id = getKeyId();
+  const key_secret = getKeySecret();
 
-if (keyId && keySecret && !keyId.startsWith('rzp_test_placeholder')) {
+  if (!key_id || !key_secret || key_id.startsWith('rzp_test_placeholder')) {
+    return null;
+  }
+
   try {
-    razorpayInstance = new Razorpay({
-      key_id: keyId,
-      key_secret: keySecret,
+    return new Razorpay({
+      key_id,
+      key_secret,
     });
   } catch (err) {
     console.warn('[Razorpay Warning] Failed to initialize Razorpay client:', err.message);
+    return null;
   }
-}
+};
 
-const getRazorpay = () => razorpayInstance;
-
-const isRazorpayAvailable = () => Boolean(razorpayInstance);
+const isRazorpayAvailable = () => Boolean(getRazorpay());
 
 const getFrontendUrl = () => {
   return process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -70,7 +77,7 @@ const PLAN_DEFINITIONS = {
  * HMAC SHA256 of order_id + "|" + payment_id using key_secret
  */
 const verifyPaymentSignature = ({ order_id, payment_id, signature }) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = getKeySecret();
   if (!secret || !order_id || !payment_id || !signature) {
     return false;
   }
@@ -87,7 +94,7 @@ const verifyPaymentSignature = ({ order_id, payment_id, signature }) => {
  * HMAC SHA256 of payment_id + "|" + subscription_id using key_secret
  */
 const verifySubscriptionSignature = ({ payment_id, subscription_id, signature }) => {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = getKeySecret();
   if (!secret || !payment_id || !subscription_id || !signature) {
     return false;
   }
@@ -104,7 +111,7 @@ const verifySubscriptionSignature = ({ payment_id, subscription_id, signature })
  * HMAC SHA256 of rawBody using webhook_secret
  */
 const verifyWebhookSignature = (rawBody, signature, customSecret = null) => {
-  const secret = customSecret || process.env.RAZORPAY_WEBHOOK_SECRET;
+  const secret = (customSecret || process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
   if (!secret || !signature || !rawBody) {
     return false;
   }
@@ -132,49 +139,57 @@ const getOrCreatePlanId = async (planKey) => {
 
   // 1. Check if configured in environment
   if (planKey === 'monthly' && process.env.RAZORPAY_PLAN_MONTHLY_ID) {
-    return process.env.RAZORPAY_PLAN_MONTHLY_ID;
+    return process.env.RAZORPAY_PLAN_MONTHLY_ID.trim();
   }
   if (planKey === 'yearly' && process.env.RAZORPAY_PLAN_YEARLY_ID) {
-    return process.env.RAZORPAY_PLAN_YEARLY_ID;
+    return process.env.RAZORPAY_PLAN_YEARLY_ID.trim();
   }
 
-  // 2. If Razorpay client is available in test mode, find or create the plan
+  // 2. Use Razorpay client to find or create the real plan
   const rzp = getRazorpay();
-  if (rzp && typeof rzp.plans?.create === 'function') {
-    try {
-      const plansList = await rzp.plans.all({ count: 20 });
-      const existing = (plansList.items || []).find(
-        (p) =>
-          p.period === planConfig.period &&
-          p.item?.amount === planConfig.amountInPaise &&
-          p.item?.currency === planConfig.currency
-      );
-      if (existing) {
-        return existing.id;
-      }
-
-      const created = await rzp.plans.create({
-        period: planConfig.period,
-        interval: planConfig.interval,
-        item: {
-          name: planConfig.name,
-          amount: planConfig.amountInPaise,
-          currency: planConfig.currency,
-          description: planConfig.description,
-        },
-        notes: {
-          platform: 'SkillSwap',
-          planKey,
-        },
-      });
-      return created.id;
-    } catch (err) {
-      console.warn('[Razorpay Plan Create Warning]:', err.message);
-    }
+  if (!rzp) {
+    throw new Error(
+      'Razorpay gateway is not configured. Please set valid RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the server environment.'
+    );
   }
 
-  // 3. Fallback placeholder plan ID for testing environments
-  return `plan_test_${planKey}_skillswap`;
+  if (typeof rzp.plans?.all !== 'function' || typeof rzp.plans?.create !== 'function') {
+    throw new Error('Razorpay SDK plans API is not available on this client.');
+  }
+
+  try {
+    const plansList = await rzp.plans.all({ count: 20 });
+    const existing = (plansList.items || []).find(
+      (p) =>
+        p.period === planConfig.period &&
+        p.item?.amount === planConfig.amountInPaise &&
+        p.item?.currency === planConfig.currency
+    );
+    if (existing) {
+      return existing.id;
+    }
+
+    const created = await rzp.plans.create({
+      period: planConfig.period,
+      interval: planConfig.interval,
+      item: {
+        name: planConfig.name,
+        amount: planConfig.amountInPaise,
+        currency: planConfig.currency,
+        description: planConfig.description,
+      },
+      notes: {
+        platform: 'SkillSwap',
+        planKey,
+      },
+    });
+    return created.id;
+  } catch (err) {
+    console.error('[Razorpay Plan Error]:', err.message);
+    throw new Error(
+      `Failed to create or retrieve Razorpay subscription plan for ${planKey}: ${err.message}. Please verify your RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.`
+    );
+  }
 };
 
 module.exports = {

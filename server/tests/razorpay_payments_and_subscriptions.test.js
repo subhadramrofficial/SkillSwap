@@ -8,7 +8,8 @@ const SkillListing = require('../models/SkillListing');
 const SkillCategory = require('../models/SkillCategory');
 const GiftTransaction = require('../models/GiftTransaction');
 const subscriptionService = require('../services/subscriptionService');
-const { verifyPaymentSignature, verifySubscriptionSignature } = require('../config/razorpay');
+const razorpayConfig = require('../config/razorpay');
+const { verifyPaymentSignature, verifySubscriptionSignature } = razorpayConfig;
 
 describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', () => {
   let userAToken;
@@ -384,6 +385,14 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
     });
 
     it('2. Should create a Razorpay Subscription for Monthly Pro', async () => {
+      jest.spyOn(razorpayConfig, 'getOrCreatePlanId').mockResolvedValue('plan_monthly_pro_test');
+      const rzp = razorpayConfig.getRazorpay();
+      const createSubSpy = jest.spyOn(rzp.subscriptions, 'create').mockResolvedValue({
+        id: `sub_rzp_monthly_${Date.now()}`,
+        status: 'created',
+      });
+      jest.spyOn(razorpayConfig, 'getRazorpay').mockReturnValue(rzp);
+
       const res = await request(app)
         .post('/api/v1/subscriptions/create-subscription')
         .set('Authorization', `Bearer ${userAToken}`)
@@ -399,6 +408,23 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
 
       const user = await User.findById(userAId);
       expect(user.subscription.razorpaySubscriptionId).toBe(monthlySubId);
+
+      createSubSpy.mockRestore();
+    });
+
+    it('2b. Should return 502 with meaningful error if Razorpay plan creation or credentials fail', async () => {
+      jest.spyOn(razorpayConfig, 'getOrCreatePlanId').mockRejectedValueOnce(
+        new Error('Failed to create or retrieve Razorpay subscription plan for monthly: 401 Unauthorized. Please verify your RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.')
+      );
+
+      const res = await request(app)
+        .post('/api/v1/subscriptions/create-subscription')
+        .set('Authorization', `Bearer ${userBToken}`)
+        .send({ plan: 'monthly' });
+
+      expect(res.status).toBe(502);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toContain('Failed to create or retrieve Razorpay subscription plan');
     });
 
     it('3. Should verify subscription with valid signature and activate Pro membership', async () => {
@@ -439,6 +465,19 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('Invalid subscription signature');
+    });
+
+    it('4b. Should reject verification if payment ID or signature is missing', async () => {
+      const resMissing = await request(app)
+        .post('/api/v1/subscriptions/verify-subscription')
+        .set('Authorization', `Bearer ${userCToken}`)
+        .send({
+          subscriptionId: 'sub_test_charlie',
+          plan: 'yearly',
+        });
+
+      expect(resMissing.status).toBe(400);
+      expect(resMissing.body.message).toContain('Razorpay Payment ID and cryptographic signature are required');
     });
 
     it('5. Should activate Annual subscription via subscription.activated webhook', async () => {
@@ -601,6 +640,23 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
       expect(charlie.subscription.status).toBe('canceled');
       expect(charlie.subscription.plan).toBe('free');
       expect(subscriptionService.hasActiveSubscription(charlie)).toBe(false);
+    });
+
+    it('9b. Should reject webhook if signature is missing or secret is invalid', async () => {
+      const webhookPayload = { event: 'payment.captured', payload: {} };
+
+      // Missing signature
+      const res1 = await request(app)
+        .post('/api/v1/razorpay/webhook')
+        .send(webhookPayload);
+      expect(res1.status).toBe(400);
+
+      // Invalid signature
+      const res2 = await request(app)
+        .post('/api/v1/razorpay/webhook')
+        .set('x-razorpay-signature', 'invalid_hex_signature')
+        .send(webhookPayload);
+      expect(res2.status).toBe(400);
     });
   });
 

@@ -80,7 +80,10 @@ const uploadAvatar = async (req, res, next) => {
     }
 
     const host = req.get('host');
-    const protocol = req.protocol;
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = forwardedProto
+      ? forwardedProto.split(',')[0].trim()
+      : (req.secure || process.env.NODE_ENV === 'production' ? 'https' : req.protocol);
     const avatarUrl = `${protocol}://${host}/uploads/avatars/${req.file.filename}`;
 
     const user = req.user;

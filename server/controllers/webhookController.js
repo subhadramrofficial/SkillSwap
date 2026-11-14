@@ -42,17 +42,24 @@ const sendNotificationSafely = async ({ recipient, sender, exchangeId, title, me
  */
 const handleRazorpayWebhook = async (req, res) => {
   const sig = req.headers['x-razorpay-signature'];
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
+
+  // 1. Require configured secret and signature header
+  if (!webhookSecret) {
+    console.error('[Razorpay Webhook Error] RAZORPAY_WEBHOOK_SECRET is not configured in backend environment');
+    return res.status(400).send('Webhook secret is not configured');
+  }
+
+  if (!sig) {
+    console.error('[Razorpay Webhook Error] Missing x-razorpay-signature header');
+    return res.status(400).send('Missing x-razorpay-signature header');
+  }
 
   const rawPayload = req.rawBody || req.body;
-
-  // 1. Verify webhook signature if configured and not placeholder
-  if (webhookSecret && !webhookSecret.startsWith('placeholder') && sig) {
-    const isValid = verifyWebhookSignature(rawPayload, sig, webhookSecret);
-    if (!isValid) {
-      console.error('[Razorpay Webhook Error] Webhook signature verification failed');
-      return res.status(400).send('Webhook signature verification failed');
-    }
+  const isValid = verifyWebhookSignature(rawPayload, sig, webhookSecret);
+  if (!isValid) {
+    console.error('[Razorpay Webhook Error] Webhook signature verification failed');
+    return res.status(400).send('Webhook signature verification failed');
   }
 
   // 2. Parse event payload

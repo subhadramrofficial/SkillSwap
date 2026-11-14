@@ -2,12 +2,7 @@ const GiftTransaction = require('../models/GiftTransaction');
 const Exchange = require('../models/Exchange');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
-const {
-  getRazorpay,
-  isRazorpayAvailable,
-  getFrontendUrl,
-  verifyPaymentSignature,
-} = require('../config/razorpay');
+const razorpayConfig = require('../config/razorpay');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 
 /**
@@ -174,61 +169,63 @@ const createGiftOrder = async (req, res, next) => {
       payoutNote: 'Test Mode: Recorded gift token credit on SkillSwap ledger for recipient.',
     });
 
-    const rzp = getRazorpay();
+    const rzp = razorpayConfig.getRazorpay();
 
-    if (rzp && typeof rzp.orders?.create === 'function') {
-      try {
-        const order = await rzp.orders.create({
-          amount: amountInPaise,
-          currency: 'INR',
-          receipt: giftRecord.transactionId,
-          notes: {
-            platform: 'SkillSwap',
-            type: 'coffee_gift',
-            giftTransactionId: giftRecord._id.toString(),
-            transactionId: giftRecord.transactionId,
-            senderId: req.user._id.toString(),
-            recipientId: recipientUser._id.toString(),
-            exchangeId: targetExchangeId ? targetExchangeId.toString() : '',
-            message: cleanMessage,
-          },
-        });
+    if (!rzp) {
+      giftRecord.status = 'failed';
+      await giftRecord.save();
+      return errorResponse(
+        res,
+        503,
+        'Razorpay gateway is not configured. Please set valid RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the server environment.'
+      );
+    }
 
-        giftRecord.razorpayOrderId = order.id;
-        await giftRecord.save();
+    if (typeof rzp.orders?.create !== 'function') {
+      giftRecord.status = 'failed';
+      await giftRecord.save();
+      return errorResponse(res, 500, 'Razorpay orders API is not available on this client.');
+    }
 
-        return successResponse(res, 201, 'Razorpay Order initialized', {
-          orderId: order.id,
-          amount: parsedAmount,
-          currency: 'INR',
-          amountInPaise: order.amount,
-          keyId: process.env.RAZORPAY_KEY_ID,
+    try {
+      const order = await rzp.orders.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        receipt: giftRecord.transactionId,
+        notes: {
+          platform: 'SkillSwap',
+          type: 'coffee_gift',
+          giftTransactionId: giftRecord._id.toString(),
           transactionId: giftRecord.transactionId,
-          giftId: giftRecord._id,
-          recipient: { _id: recipientUser._id, name: recipientUser.name, email: recipientUser.email },
-        });
-      } catch (orderErr) {
-        console.error('[Razorpay Order Create Error]:', orderErr.message);
-        giftRecord.status = 'failed';
-        await giftRecord.save();
-        return errorResponse(res, 502, `Razorpay order creation failed: ${orderErr.message}`);
-      }
-    } else {
-      // Mock / Offline Test Mode when live secret key is not set
-      const mockOrderId = `order_test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      giftRecord.razorpayOrderId = mockOrderId;
+          senderId: req.user._id.toString(),
+          recipientId: recipientUser._id.toString(),
+          exchangeId: targetExchangeId ? targetExchangeId.toString() : '',
+          message: cleanMessage,
+        },
+      });
+
+      giftRecord.razorpayOrderId = order.id;
       await giftRecord.save();
 
-      return successResponse(res, 201, 'Razorpay test order created (Test Mode)', {
-        orderId: mockOrderId,
+      return successResponse(res, 201, 'Razorpay Order initialized', {
+        orderId: order.id,
         amount: parsedAmount,
         currency: 'INR',
-        amountInPaise,
-        keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder_key_id',
+        amountInPaise: order.amount,
+        keyId: (process.env.RAZORPAY_KEY_ID || '').trim(),
         transactionId: giftRecord.transactionId,
         giftId: giftRecord._id,
         recipient: { _id: recipientUser._id, name: recipientUser.name, email: recipientUser.email },
       });
+    } catch (orderErr) {
+      console.error('[Razorpay Order Create Error]:', orderErr.message);
+      giftRecord.status = 'failed';
+      await giftRecord.save();
+      return errorResponse(
+        res,
+        502,
+        `Razorpay order creation failed: ${orderErr.message}. Please verify your Razorpay API credentials.`
+      );
     }
   } catch (error) {
     if (error.statusCode) {
@@ -289,29 +286,33 @@ const verifyGiftPayment = async (req, res, next) => {
       return successResponse(res, 200, 'Payment already verified and completed', gift);
     }
 
-    // 4. Verify cryptographic signature if signature and payment_id are provided
-    if (razorpay_signature && razorpay_payment_id) {
-      const isValid = verifyPaymentSignature({
-        order_id: targetOrderId,
-        payment_id: razorpay_payment_id,
-        signature: razorpay_signature,
-      });
+    // 4. Verify cryptographic signature (enforced strictly in both development and production)
+    if (!razorpay_payment_id || !razorpay_signature) {
+      return errorResponse(
+        res,
+        400,
+        'Razorpay Payment ID and cryptographic signature are required to verify the payment.'
+      );
+    }
 
-      if (!isValid) {
-        gift.status = 'failed';
-        gift.paymentStatus = 'failed';
-        await gift.save();
-        return errorResponse(res, 400, 'Invalid payment signature. Payment verification failed.');
-      }
-    } else if (process.env.NODE_ENV === 'production') {
-      return errorResponse(res, 400, 'Payment signature and Payment ID are required in production.');
+    const isValid = razorpayConfig.verifyPaymentSignature({
+      order_id: targetOrderId,
+      payment_id: razorpay_payment_id,
+      signature: razorpay_signature,
+    });
+
+    if (!isValid) {
+      gift.status = 'failed';
+      gift.paymentStatus = 'failed';
+      await gift.save();
+      return errorResponse(res, 400, 'Invalid payment signature. Payment verification failed.');
     }
 
     // 5. Update transaction record
     gift.status = 'completed';
     gift.paymentStatus = 'paid';
-    gift.razorpayPaymentId = razorpay_payment_id || `pay_mock_${Date.now()}`;
-    gift.razorpaySignature = razorpay_signature || null;
+    gift.razorpayPaymentId = razorpay_payment_id;
+    gift.razorpaySignature = razorpay_signature;
     gift.isDemo = false;
     gift.payoutStatus = 'escrow_credited';
     gift.payoutNote = 'Recorded gift credit on SkillSwap ledger for recipient (Test Mode marketplace escrow).';

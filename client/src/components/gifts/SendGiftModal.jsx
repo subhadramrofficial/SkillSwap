@@ -133,92 +133,79 @@ const SendGiftModal = ({
         // 2. Load Razorpay Checkout modal script
         const isLoaded = await loadRazorpayScript();
 
-        if (isLoaded && window.Razorpay && orderData.keyId && !orderData.orderId.startsWith('order_test_mock')) {
-          // Open interactive Razorpay checkout modal
-          const options = {
-            key: orderData.keyId,
-            amount: orderData.amountInPaise || Math.round(effectiveAmount * 100),
-            currency: orderData.currency || 'INR',
-            name: 'SkillSwap',
-            description: `Coffee Gift for ${partner?.name || 'Partner'}`,
-            image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
-            order_id: orderData.orderId,
-            prefill: {
-              name: currentUser?.name || '',
-              email: currentUser?.email || '',
-            },
-            notes: {
-              platform: 'SkillSwap',
-              type: 'coffee_gift',
-              giftId: orderData.giftId,
-              recipient: partner?.name || '',
-            },
-            theme: {
-              color: '#f59e0b', // amber-500
-            },
-            handler: async (response) => {
-              try {
-                setLoading(true);
-                const verifyRes = await giftService.verifyPayment({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                  giftId: orderData.giftId,
-                  orderId: orderData.orderId,
-                });
-
-                if (verifyRes.success && verifyRes.data) {
-                  setTransactionReceipt(verifyRes.data);
-                  setStep('receipt');
-                  if (onSuccess) {
-                    onSuccess(`Coffee gift of ₹${effectiveAmount} sent to ${partner?.name || 'partner'}!`);
-                  }
-                } else {
-                  setError(verifyRes.message || 'Payment signature verification failed.');
-                }
-              } catch (vErr) {
-                setError(vErr.response?.data?.message || vErr.message || 'Payment verification failed.');
-              } finally {
-                setLoading(false);
-              }
-            },
-            modal: {
-              ondismiss: async () => {
-                setLoading(false);
-                setError('Checkout modal was closed before completing payment.');
-                try {
-                  await giftService.cancelOrder({ orderId: orderData.orderId, giftId: orderData.giftId });
-                } catch (_) {}
-              },
-            },
-          };
-
-          const rzp = new window.Razorpay(options);
-          rzp.on('payment.failed', (errResponse) => {
-            setError(errResponse.error?.description || 'Payment failed. Please try again.');
-            setLoading(false);
-          });
-          rzp.open();
-        } else {
-          // Test Mode / Headless simulation fallback
-          const verifyRes = await giftService.verifyPayment({
-            giftId: orderData.giftId,
-            orderId: orderData.orderId,
-            razorpay_order_id: orderData.orderId,
-            razorpay_payment_id: `pay_test_${Date.now()}`,
-            razorpay_signature: 'test_signature_offline',
-          });
-
-          if (verifyRes.success && verifyRes.data) {
-            setTransactionReceipt(verifyRes.data);
-            setStep('receipt');
-            if (onSuccess) {
-              onSuccess(`Coffee gift of ₹${effectiveAmount} verified for ${partner?.name || 'partner'}!`);
-            }
-          } else {
-            throw new Error('Test transaction verification failed.');
-          }
+        if (!isLoaded || !window.Razorpay) {
+          throw new Error('Razorpay Checkout SDK failed to load. Please check your network connection or disable ad-blockers and try again.');
         }
+
+        if (!orderData.keyId) {
+          throw new Error('Razorpay Key ID is not configured on the server.');
+        }
+
+        // Open interactive Razorpay checkout modal
+        const options = {
+          key: orderData.keyId,
+          amount: orderData.amountInPaise || Math.round(effectiveAmount * 100),
+          currency: orderData.currency || 'INR',
+          name: 'SkillSwap',
+          description: `Coffee Gift for ${partner?.name || 'Partner'}`,
+          image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
+          order_id: orderData.orderId,
+          prefill: {
+            name: currentUser?.name || '',
+            email: currentUser?.email || '',
+          },
+          notes: {
+            platform: 'SkillSwap',
+            type: 'coffee_gift',
+            giftId: orderData.giftId,
+            recipient: partner?.name || '',
+          },
+          theme: {
+            color: '#f59e0b', // amber-500
+          },
+          handler: async (response) => {
+            try {
+              setLoading(true);
+              const verifyRes = await giftService.verifyPayment({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                giftId: orderData.giftId,
+                orderId: orderData.orderId,
+              });
+
+              if (verifyRes.success && verifyRes.data) {
+                setTransactionReceipt(verifyRes.data);
+                setStep('receipt');
+                if (onSuccess) {
+                  onSuccess(`Coffee gift of ₹${effectiveAmount} sent to ${partner?.name || 'partner'}!`);
+                }
+              } else {
+                setError(verifyRes.message || 'Payment signature verification failed.');
+              }
+            } catch (vErr) {
+              setError(vErr.response?.data?.message || vErr.message || 'Payment verification failed.');
+            } finally {
+              setLoading(false);
+            }
+          },
+          modal: {
+            ondismiss: async () => {
+              setLoading(false);
+              setError('Checkout modal was closed before completing payment.');
+              try {
+                await giftService.cancelOrder({ orderId: orderData.orderId, giftId: orderData.giftId });
+              } catch (_) {}
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', (errResponse) => {
+          setError(errResponse.error?.description || 'Payment failed. Please try again.');
+          setLoading(false);
+        });
+        rzp.open();
       } else {
         // Simulated demo mode
         const res = await giftService.sendGift(payload);

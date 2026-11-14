@@ -114,86 +114,72 @@ const SubscriptionPage = () => {
       // 2. Load Razorpay Checkout modal
       const isLoaded = await loadRazorpayScript();
 
-      if (isLoaded && window.Razorpay && subData.keyId && !subData.subscriptionId.startsWith('sub_test_mock')) {
-        const options = {
-          key: subData.keyId,
-          subscription_id: subData.subscriptionId,
-          name: 'SkillSwap Pro',
-          description: `${planKey === 'yearly' ? 'Annual' : 'Monthly'} Membership`,
-          image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
-          handler: async (response) => {
-            try {
-              setSubmittingPlan(planKey);
-              const verifyRes = await subscriptionService.verifySubscription({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_subscription_id: response.razorpay_subscription_id,
-                razorpay_signature: response.razorpay_signature,
-                subscriptionId: subData.subscriptionId,
-                plan: planKey,
-              });
-
-              if (verifyRes.success) {
-                setFeedback({
-                  type: 'success',
-                  title: '🎉 Premium Membership Activated!',
-                  message: `Your SkillSwap Pro ${planKey === 'yearly' ? 'Annual' : 'Monthly'} subscription is now active! Enjoy unlimited skill exchanges.`,
-                });
-                fetchSubscriptionData();
-              } else {
-                setError(verifyRes.message || 'Verification failed');
-              }
-            } catch (vErr) {
-              setError(vErr.response?.data?.message || vErr.message || 'Verification failed');
-            } finally {
-              setSubmittingPlan(null);
-            }
-          },
-          prefill: {
-            name: user?.name || '',
-            email: user?.email || '',
-          },
-          theme: {
-            color: planKey === 'yearly' ? '#9333ea' : '#10b981',
-          },
-          modal: {
-            ondismiss: () => {
-              setSubmittingPlan(null);
-              setFeedback({
-                type: 'info',
-                title: 'Checkout Closed',
-                message: 'The Razorpay subscription checkout was closed without completing authorization.',
-              });
-            },
-          },
-        };
-
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', (errResponse) => {
-          setError(errResponse.error?.description || 'Subscription mandate authorization failed.');
-          setSubmittingPlan(null);
-        });
-        rzp.open();
-      } else {
-        // Test Mode simulation fallback
-        const verifyRes = await subscriptionService.verifySubscription({
-          subscriptionId: subData.subscriptionId,
-          plan: planKey,
-          razorpay_payment_id: `pay_test_${Date.now()}`,
-          razorpay_signature: 'test_subscription_signature',
-        });
-
-        if (verifyRes.success) {
-          setFeedback({
-            type: 'success',
-            title: '🎉 Test Membership Activated!',
-            message: `Your SkillSwap Pro ${planKey === 'yearly' ? 'Annual' : 'Monthly'} subscription (Test Mode) is active.`,
-          });
-          fetchSubscriptionData();
-        } else {
-          throw new Error('Test subscription verification failed.');
-        }
-        setSubmittingPlan(null);
+      if (!isLoaded || !window.Razorpay) {
+        throw new Error('Razorpay SDK failed to load. Please check your internet connection or disable ad-blockers and try again.');
       }
+
+      if (!subData.keyId) {
+        throw new Error('Razorpay Key ID is not configured on the server.');
+      }
+
+      const options = {
+        key: subData.keyId,
+        subscription_id: subData.subscriptionId,
+        name: 'SkillSwap Pro',
+        description: `${planKey === 'yearly' ? 'Annual' : 'Monthly'} Membership`,
+        image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
+        handler: async (response) => {
+          try {
+            setSubmittingPlan(planKey);
+            const verifyRes = await subscriptionService.verifySubscription({
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_subscription_id: response.razorpay_subscription_id,
+              razorpay_signature: response.razorpay_signature,
+              subscriptionId: subData.subscriptionId,
+              plan: planKey,
+            });
+
+            if (verifyRes.success) {
+              setFeedback({
+                type: 'success',
+                title: '🎉 Premium Membership Activated!',
+                message: `Your SkillSwap Pro ${planKey === 'yearly' ? 'Annual' : 'Monthly'} subscription is now active! Enjoy unlimited skill exchanges.`,
+              });
+              fetchSubscriptionData();
+            } else {
+              setError(verifyRes.message || 'Verification failed');
+            }
+          } catch (vErr) {
+            setError(vErr.response?.data?.message || vErr.message || 'Verification failed');
+          } finally {
+            setSubmittingPlan(null);
+          }
+        },
+        prefill: {
+          name: user?.name || '',
+          email: user?.email || '',
+        },
+        theme: {
+          color: planKey === 'yearly' ? '#9333ea' : '#10b981',
+        },
+        modal: {
+          ondismiss: () => {
+            setSubmittingPlan(null);
+            setFeedback({
+              type: 'info',
+              title: 'Checkout Closed',
+              message: 'The Razorpay subscription checkout was closed without completing authorization.',
+            });
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (errResponse) => {
+        setError(errResponse.error?.description || 'Subscription mandate authorization failed.');
+        setSubmittingPlan(null);
+      });
+      rzp.open();
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to initialize subscription.');
       setSubmittingPlan(null);

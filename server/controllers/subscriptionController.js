@@ -1,13 +1,6 @@
 const subscriptionService = require('../services/subscriptionService');
 const User = require('../models/User');
-const {
-  getRazorpay,
-  isRazorpayAvailable,
-  getFrontendUrl,
-  PLAN_DEFINITIONS,
-  getOrCreatePlanId,
-  verifySubscriptionSignature,
-} = require('../config/razorpay');
+const razorpayConfig = require('../config/razorpay');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 
 /**
@@ -36,25 +29,25 @@ const getSubscriptionPlans = async (req, res, next) => {
       },
       {
         id: 'monthly',
-        name: PLAN_DEFINITIONS.monthly.name,
-        priceINR: PLAN_DEFINITIONS.monthly.priceInRupees,
-        amountInPaise: PLAN_DEFINITIONS.monthly.amountInPaise,
+        name: razorpayConfig.PLAN_DEFINITIONS.monthly.name,
+        priceINR: razorpayConfig.PLAN_DEFINITIONS.monthly.priceInRupees,
+        amountInPaise: razorpayConfig.PLAN_DEFINITIONS.monthly.amountInPaise,
         currency: 'INR',
         interval: 'month',
-        description: PLAN_DEFINITIONS.monthly.description,
-        features: PLAN_DEFINITIONS.monthly.benefits,
+        description: razorpayConfig.PLAN_DEFINITIONS.monthly.description,
+        features: razorpayConfig.PLAN_DEFINITIONS.monthly.benefits,
         status: 'active',
       },
       {
         id: 'yearly',
-        name: PLAN_DEFINITIONS.yearly.name,
-        priceINR: PLAN_DEFINITIONS.yearly.priceInRupees,
-        amountInPaise: PLAN_DEFINITIONS.yearly.amountInPaise,
+        name: razorpayConfig.PLAN_DEFINITIONS.yearly.name,
+        priceINR: razorpayConfig.PLAN_DEFINITIONS.yearly.priceInRupees,
+        amountInPaise: razorpayConfig.PLAN_DEFINITIONS.yearly.amountInPaise,
         currency: 'INR',
         interval: 'year',
         savings: 'Save ~25%',
-        description: PLAN_DEFINITIONS.yearly.description,
-        features: PLAN_DEFINITIONS.yearly.benefits,
+        description: razorpayConfig.PLAN_DEFINITIONS.yearly.description,
+        features: razorpayConfig.PLAN_DEFINITIONS.yearly.benefits,
         status: 'active',
       },
     ];
@@ -64,7 +57,7 @@ const getSubscriptionPlans = async (req, res, next) => {
       paymentGateway: {
         provider: 'Razorpay',
         mode: 'test',
-        keyId: process.env.RAZORPAY_KEY_ID || '',
+        keyId: (process.env.RAZORPAY_KEY_ID || '').trim(),
       },
     });
   } catch (error) {
@@ -114,57 +107,49 @@ const createRazorpaySubscription = async (req, res, next) => {
       );
     }
 
-    const planConfig = PLAN_DEFINITIONS[plan];
-    const planId = await getOrCreatePlanId(plan);
-    const rzp = getRazorpay();
+    const rzp = razorpayConfig.getRazorpay();
+    if (!rzp) {
+      return errorResponse(
+        res,
+        503,
+        'Razorpay gateway is not configured. Please set valid RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the server environment.'
+      );
+    }
 
-    if (rzp && typeof rzp.subscriptions?.create === 'function') {
-      try {
-        const totalCount = plan === 'yearly' ? 10 : 120; // 10 years or 10 years of months
-        const subscription = await rzp.subscriptions.create({
-          plan_id: planId,
-          total_count: totalCount,
-          quantity: 1,
-          customer_notify: 1,
-          notes: {
-            platform: 'SkillSwap',
-            userId: user._id.toString(),
-            plan,
-            userEmail: user.email,
-          },
-        });
+    const planConfig = razorpayConfig.PLAN_DEFINITIONS[plan];
+    let planId;
+    try {
+      planId = await razorpayConfig.getOrCreatePlanId(plan);
+    } catch (planErr) {
+      return errorResponse(res, 502, planErr.message);
+    }
 
-        user.subscription.razorpayPlanId = planId;
-        user.subscription.razorpaySubscriptionId = subscription.id;
-        await user.save();
+    if (typeof rzp.subscriptions?.create !== 'function') {
+      return errorResponse(res, 500, 'Razorpay subscriptions API is not available on this client.');
+    }
 
-        return successResponse(res, 201, 'Razorpay recurring subscription initialized', {
-          subscriptionId: subscription.id,
-          keyId: process.env.RAZORPAY_KEY_ID,
+    try {
+      const totalCount = plan === 'yearly' ? 10 : 120; // 10 years or 10 years of months
+      const subscription = await rzp.subscriptions.create({
+        plan_id: planId,
+        total_count: totalCount,
+        quantity: 1,
+        customer_notify: 1,
+        notes: {
+          platform: 'SkillSwap',
+          userId: user._id.toString(),
           plan,
-          planName: planConfig.name,
-          amount: planConfig.amountInPaise,
-          currency: planConfig.currency,
-          description: planConfig.description,
-          user: {
-            name: user.name,
-            email: user.email,
-          },
-        });
-      } catch (rzpErr) {
-        console.error('[Razorpay Subscription Create Error]:', rzpErr.message);
-        return errorResponse(res, 502, `Razorpay subscription creation failed: ${rzpErr.message}`);
-      }
-    } else {
-      // Mock / Offline Test Mode when live secret key is not set
-      const mockSubId = `sub_test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          userEmail: user.email,
+        },
+      });
+
       user.subscription.razorpayPlanId = planId;
-      user.subscription.razorpaySubscriptionId = mockSubId;
+      user.subscription.razorpaySubscriptionId = subscription.id;
       await user.save();
 
-      return successResponse(res, 201, 'Razorpay test subscription initialized (Test Mode)', {
-        subscriptionId: mockSubId,
-        keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder_key_id',
+      return successResponse(res, 201, 'Razorpay recurring subscription initialized', {
+        subscriptionId: subscription.id,
+        keyId: (process.env.RAZORPAY_KEY_ID || '').trim(),
         plan,
         planName: planConfig.name,
         amount: planConfig.amountInPaise,
@@ -175,6 +160,13 @@ const createRazorpaySubscription = async (req, res, next) => {
           email: user.email,
         },
       });
+    } catch (rzpErr) {
+      console.error('[Razorpay Subscription Create Error]:', rzpErr.message);
+      return errorResponse(
+        res,
+        502,
+        `Razorpay subscription creation failed: ${rzpErr.message}. Please verify your Razorpay API credentials in the backend environment.`
+      );
     }
   } catch (error) {
     next(error);
@@ -200,7 +192,15 @@ const verifyRazorpaySubscription = async (req, res, next) => {
     const targetSubId = razorpay_subscription_id || subscriptionId;
 
     if (!targetSubId) {
-      return errorResponse(res, 400, 'Razorpay Subscription ID is required');
+      return errorResponse(res, 400, 'Razorpay Subscription ID is required.');
+    }
+
+    if (!razorpay_payment_id || !razorpay_signature) {
+      return errorResponse(
+        res,
+        400,
+        'Razorpay Payment ID and cryptographic signature are required to verify the subscription.'
+      );
     }
 
     const user = await User.findById(userId);
@@ -208,19 +208,15 @@ const verifyRazorpaySubscription = async (req, res, next) => {
       return errorResponse(res, 404, 'User not found');
     }
 
-    // Verify cryptographic signature if provided
-    if (razorpay_signature && razorpay_payment_id) {
-      const isValid = verifySubscriptionSignature({
-        payment_id: razorpay_payment_id,
-        subscription_id: targetSubId,
-        signature: razorpay_signature,
-      });
+    // Strictly verify cryptographic signature in both development and production
+    const isValid = razorpayConfig.verifySubscriptionSignature({
+      payment_id: razorpay_payment_id,
+      subscription_id: targetSubId,
+      signature: razorpay_signature,
+    });
 
-      if (!isValid) {
-        return errorResponse(res, 400, 'Invalid subscription signature. Payment verification failed.');
-      }
-    } else if (process.env.NODE_ENV === 'production') {
-      return errorResponse(res, 400, 'Subscription signature is required in production.');
+    if (!isValid) {
+      return errorResponse(res, 400, 'Invalid subscription signature. Payment verification failed.');
     }
 
     const targetPlan = requestedPlan || user.subscription.plan || 'monthly';
@@ -229,7 +225,7 @@ const verifyRazorpaySubscription = async (req, res, next) => {
     user.subscription.status = 'active';
     user.subscription.plan = finalPlan;
     user.subscription.razorpaySubscriptionId = targetSubId;
-    user.subscription.razorpayPaymentId = razorpay_payment_id || `pay_mock_${Date.now()}`;
+    user.subscription.razorpayPaymentId = razorpay_payment_id;
     user.subscription.cancelAtPeriodEnd = false;
 
     const now = new Date();
@@ -265,12 +261,11 @@ const cancelSubscription = async (req, res, next) => {
       return errorResponse(res, 400, 'No active subscription found to cancel.');
     }
 
-    const rzp = getRazorpay();
+    const rzp = razorpayConfig.getRazorpay();
     const subId = user.subscription.razorpaySubscriptionId;
 
-    if (rzp && subId && typeof rzp.subscriptions?.cancel === 'function' && !subId.startsWith('sub_test_')) {
+    if (rzp && subId && typeof rzp.subscriptions?.cancel === 'function') {
       try {
-        // cancel_at_cycle_end: 1 tells Razorpay to cancel at current period end
         await rzp.subscriptions.cancel(subId, 1);
       } catch (rzpErr) {
         console.warn('[Razorpay Cancel Warning]:', rzpErr.message);

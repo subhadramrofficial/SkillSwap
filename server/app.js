@@ -9,6 +9,9 @@ const { successResponse, errorResponse } = require('./utils/apiResponse');
 
 const app = express();
 
+// Trust reverse proxy (Render, Heroku, Cloudflare, Nginx)
+app.set('trust proxy', 1);
+
 // Security HTTP headers with cross-origin resource policy for served uploads
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
