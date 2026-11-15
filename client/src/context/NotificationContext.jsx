@@ -18,6 +18,9 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
+  // Unified total unread notification count
+  const totalUnread = totalNotificationsCount || (exchangeUnreadCount + matchUnreadCount + giftUnreadCount);
+
   // Fetch initial badge counts from backend
   const fetchBadgeCounts = useCallback(async () => {
     if (!isAuthenticated) {
@@ -36,7 +39,7 @@ export const NotificationProvider = ({ children }) => {
         setExchangeUnreadCount(res.data.exchanges || 0);
         setMatchUnreadCount(res.data.matches || 0);
         setGiftUnreadCount(res.data.gifts || 0);
-        setTotalNotificationsCount(res.data.totalNotifications || 0);
+        setTotalNotificationsCount(res.data.totalNotifications || res.data.totalUnread || 0);
         setChatUnreadCount(res.data.chat || 0);
         setConversationUnreadMap(res.data.conversationUnreadMap || {});
       }
@@ -50,9 +53,18 @@ export const NotificationProvider = ({ children }) => {
     if (!isAuthenticated) return;
     setLoadingNotifications(true);
     try {
-      const res = await notificationService.getNotifications({ page: 1, limit: 15, unreadOnly });
+      const res = await notificationService.getNotifications({ page: 1, limit: 50, unreadOnly });
       if (res.success && res.data) {
-        setNotifications(res.data.notifications || []);
+        let list = [];
+        if (Array.isArray(res.data)) {
+          list = res.data;
+        } else if (Array.isArray(res.data.notifications)) {
+          list = res.data.notifications;
+        }
+        setNotifications(list);
+        if (typeof res.data.unreadCount === 'number') {
+          setTotalNotificationsCount(res.data.unreadCount);
+        }
       }
     } catch (err) {
       console.warn('[Notifications Fetch Error]', err.message);
@@ -75,26 +87,55 @@ export const NotificationProvider = ({ children }) => {
     // 1. Exchanges & alert badges update event
     const handleExchangeBadgeUpdate = (data) => {
       if (typeof data?.count === 'number') {
-        setExchangeUnreadCount(data.count);
+        setTotalNotificationsCount(data.count);
       }
       if (data?.badges) {
         setExchangeUnreadCount(data.badges.exchanges || 0);
         setMatchUnreadCount(data.badges.matches || 0);
         setGiftUnreadCount(data.badges.gifts || 0);
-        setTotalNotificationsCount(data.badges.totalNotifications || 0);
+        setTotalNotificationsCount(data.badges.totalNotifications ?? data.badges.totalUnread ?? 0);
+        if (typeof data.badges.chat === 'number') {
+          setChatUnreadCount(data.badges.chat);
+        }
       } else {
+        if (typeof data?.exchanges === 'number') setExchangeUnreadCount(data.exchanges);
+        if (typeof data?.matches === 'number') setMatchUnreadCount(data.matches);
+        if (typeof data?.gifts === 'number') setGiftUnreadCount(data.gifts);
+        if (typeof data?.totalUnread === 'number') setTotalNotificationsCount(data.totalUnread);
         fetchBadgeCounts();
       }
-      fetchNotifications();
+
+      if (data?.notification && data.notification._id) {
+        setNotifications((prev) => {
+          const exists = prev.some((n) => n._id === data.notification._id);
+          if (exists) return prev;
+          return [data.notification, ...prev];
+        });
+      } else {
+        fetchNotifications();
+      }
     };
 
-    // 2. Direct user alert event
+    // 2. Direct new_notification event
+    const handleNewNotification = (newNotif) => {
+      if (newNotif && newNotif._id) {
+        setNotifications((prev) => {
+          const exists = prev.some((n) => n._id === newNotif._id);
+          if (exists) return prev;
+          return [newNotif, ...prev];
+        });
+        setTotalNotificationsCount((prev) => prev + 1);
+      }
+      fetchBadgeCounts();
+    };
+
+    // 3. Direct user alert event
     const handleUserAlert = () => {
       fetchBadgeCounts();
       fetchNotifications();
     };
 
-    // 3. Chat badge update event
+    // 4. Chat badge update event
     const handleChatBadgeUpdate = (data) => {
       if (typeof data?.count === 'number') {
         setChatUnreadCount(data.count);
@@ -109,14 +150,24 @@ export const NotificationProvider = ({ children }) => {
       }
     };
 
+    // 5. Re-synchronize on socket reconnect
+    const handleConnect = () => {
+      fetchBadgeCounts();
+      fetchNotifications();
+    };
+
     socket.on('exchange_badge_update', handleExchangeBadgeUpdate);
+    socket.on('new_notification', handleNewNotification);
     socket.on('user_alert', handleUserAlert);
     socket.on('chat_badge_update', handleChatBadgeUpdate);
+    socket.on('connect', handleConnect);
 
     return () => {
       socket.off('exchange_badge_update', handleExchangeBadgeUpdate);
+      socket.off('new_notification', handleNewNotification);
       socket.off('user_alert', handleUserAlert);
       socket.off('chat_badge_update', handleChatBadgeUpdate);
+      socket.off('connect', handleConnect);
     };
   }, [socket, isAuthenticated, fetchBadgeCounts, fetchNotifications]);
 
@@ -203,6 +254,8 @@ export const NotificationProvider = ({ children }) => {
   }, [socket, isConnected]);
 
   const value = {
+    totalUnread,
+    unreadCount: totalUnread,
     exchangeUnreadCount,
     matchUnreadCount,
     giftUnreadCount,

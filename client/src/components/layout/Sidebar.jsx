@@ -19,12 +19,13 @@ import {
   Layers,
   Flag,
   CreditCard,
+  Bell,
   X
 } from 'lucide-react';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => {
   const { user, isAdmin, logout } = useAuth();
-  const { exchangeUnreadCount, chatUnreadCount, matchUnreadCount, giftUnreadCount } = useNotifications();
+  const { exchangeUnreadCount, chatUnreadCount, matchUnreadCount, giftUnreadCount, totalUnread } = useNotifications();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -40,6 +41,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => 
     if (path === '/exchanges') {
       return location.pathname.startsWith('/exchanges');
     }
+    if (path === '/notifications') {
+      return location.pathname === '/notifications';
+    }
     if (path === '/skills') {
       return location.pathname === '/skills' || (location.pathname.startsWith('/skills/') && !location.pathname.startsWith('/my-skills'));
     }
@@ -52,6 +56,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => 
   // Regular user nav items
   const regularNavItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Notifications', path: '/notifications', icon: Bell },
     { name: 'Explore Skills', path: '/skills', icon: Compass },
     { name: 'Find Partners', path: '/find-partners', icon: Users },
     { name: 'Connected Partners', path: '/connected-partners', icon: UserCheck },
@@ -78,6 +83,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => 
 
   const getBadgeCount = (path) => {
     if (isAdmin) return 0;
+    if (path === '/notifications') return totalUnread || 0;
     if (path === '/exchanges') return exchangeUnreadCount;
     if (path === '/messages') return chatUnreadCount;
     if (path === '/find-partners') return matchUnreadCount || 0;

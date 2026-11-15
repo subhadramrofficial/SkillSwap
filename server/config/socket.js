@@ -62,8 +62,9 @@ const initSocket = (httpServer) => {
   io.on('connection', (socket) => {
     console.log(`[Socket Authenticated] User: ${socket.user.name} (${socket.user._id}), Socket ID: ${socket.id}`);
 
-    // Join personal user room for direct notifications
+    // Join personal user room for direct notifications (both user:ID and user_ID formats)
     socket.join(`user:${socket.user._id}`);
+    socket.join(`user_${socket.user._id}`);
 
     /**
      * Join an authorized exchange chat room (and its canonical persistent conversation room)

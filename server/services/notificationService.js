@@ -25,21 +25,41 @@ class NotificationService {
       exchange: exchangeId,
       title,
       message,
+      link: '/exchanges',
       isRead: false,
     });
 
-    // Calculate updated unread count for recipient
-    const unreadCount = await Notification.countDocuments({
-      recipient,
-      isRead: false,
-    });
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate('sender', 'name profileImage')
+      .populate('exchange');
+
+    // Calculate updated badge counts for recipient
+    const badgeCounts = await this.getUnreadBadgeCounts(recipient);
 
     // Real-time broadcast to recipient's private socket room
     try {
       const io = getIO();
-      io.to(`user:${recipient.toString()}`).emit('exchange_badge_update', {
-        count: unreadCount,
-        notification,
+      const notifDoc = populatedNotification || notification;
+      const payload = {
+        count: badgeCounts.totalNotifications,
+        exchanges: badgeCounts.exchanges,
+        matches: badgeCounts.matches,
+        gifts: badgeCounts.gifts,
+        chat: badgeCounts.chat,
+        totalUnread: badgeCounts.totalUnread,
+        badges: badgeCounts,
+        notification: notifDoc,
+      };
+
+      const recipientId = recipient.toString();
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('exchange_badge_update', payload);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('new_notification', notifDoc);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('user_alert', {
+        title,
+        message,
+        link: '/exchanges',
+        type,
+        notificationId: notification._id,
       });
     } catch (e) {
       // Socket not initialized (e.g., during tests)
@@ -84,24 +104,38 @@ class NotificationService {
 
     const notification = await Notification.create(doc);
 
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate('sender', 'name profileImage')
+      .populate('exchange')
+      .populate('gift');
+
     // Calculate updated badge counts
     const badgeCounts = await this.getUnreadBadgeCounts(recipient);
 
     // Real-time broadcast to recipient's private socket room
     try {
       const io = getIO();
-      io.to(`user:${recipient.toString()}`).emit('exchange_badge_update', {
+      const notifDoc = populatedNotification || notification;
+      const payload = {
         count: badgeCounts.totalNotifications,
         exchanges: badgeCounts.exchanges,
         matches: badgeCounts.matches,
         gifts: badgeCounts.gifts,
-        notification,
-      });
-      io.to(`user:${recipient.toString()}`).emit('user_alert', {
+        chat: badgeCounts.chat,
+        totalUnread: badgeCounts.totalUnread,
+        badges: badgeCounts,
+        notification: notifDoc,
+      };
+
+      const recipientId = recipient.toString();
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('exchange_badge_update', payload);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('new_notification', notifDoc);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('user_alert', {
         title,
         message,
         link,
         type,
+        notificationId: notification._id,
       });
     } catch (e) {
       // Socket not initialized (e.g., during tests)
@@ -190,6 +224,7 @@ class NotificationService {
       matches: unreadMatches,
       gifts: unreadGifts,
       totalNotifications: totalUnreadNotifications,
+      totalUnread: totalUnreadNotifications,
       chat: totalUnreadChat,
       conversationUnreadMap,
     };

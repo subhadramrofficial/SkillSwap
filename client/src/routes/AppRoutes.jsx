@@ -32,6 +32,7 @@ import ExchangeManagementPage from '../pages/exchanges/ExchangeManagementPage';
 import MessagesPage from '../pages/chat/MessagesPage';
 import GiftMoneyPage from '../pages/gifts/GiftMoneyPage';
 import SubscriptionPage from '../pages/subscription/SubscriptionPage';
+import NotificationsPage from '../pages/notifications/NotificationsPage';
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
 
 const AppRoutes = () => {
@@ -60,6 +61,7 @@ const AppRoutes = () => {
         {/* Protected User Routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/:id" element={<ProfilePage />} />
           <Route path="/profile/edit" element={<EditProfilePage />} />

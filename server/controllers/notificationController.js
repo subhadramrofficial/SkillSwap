@@ -70,9 +70,18 @@ const getNotifications = async (req, res, next) => {
       .populate('exchange')
       .populate('gift')
       .sort({ createdAt: -1 })
-      .limit(40);
+      .limit(50);
 
-    return successResponse(res, 200, 'Notifications retrieved', notifications);
+    const unreadCount = await Notification.countDocuments({
+      recipient: req.user._id,
+      isRead: false,
+    });
+
+    return successResponse(res, 200, 'Notifications retrieved', {
+      notifications,
+      unreadCount,
+      total: notifications.length,
+    });
   } catch (error) {
     next(error);
   }

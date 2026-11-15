@@ -24,6 +24,7 @@ const Header = ({ onOpenMobileMenu }) => {
   const navigate = useNavigate();
 
   const {
+    totalUnread: ctxTotalUnread,
     totalNotificationsCount,
     exchangeUnreadCount,
     matchUnreadCount,
@@ -41,7 +42,7 @@ const Header = ({ onOpenMobileMenu }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef(null);
 
-  const totalUnread = totalNotificationsCount || (exchangeUnreadCount + matchUnreadCount + giftUnreadCount);
+  const totalUnread = typeof ctxTotalUnread === 'number' ? ctxTotalUnread : (totalNotificationsCount || (exchangeUnreadCount + matchUnreadCount + giftUnreadCount));
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -81,6 +82,7 @@ const Header = ({ onOpenMobileMenu }) => {
   // Determine current page title and breadcrumb based on route
   const getPageInfo = () => {
     const path = location.pathname;
+    if (path === '/notifications') return { title: 'Notifications', section: 'Activity' };
     if (path === '/dashboard') return { title: 'Dashboard', section: 'Overview' };
     if (path === '/skills') return { title: 'Explore Skills', section: 'Learning Directory' };
     if (path.startsWith('/skills/')) return { title: 'Skill Details', section: 'Explore Skills' };
@@ -259,30 +261,31 @@ const Header = ({ onOpenMobileMenu }) => {
               </div>
 
               {/* Footer */}
-              <div className="p-2.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-around text-xs text-slate-400">
+              <div className="p-2.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between px-3 text-xs text-slate-400">
                 <Link
-                  to="/find-partners"
+                  to="/notifications"
                   onClick={() => setNotifOpen(false)}
-                  className="hover:text-emerald-400 transition-colors"
+                  className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
                 >
-                  Find Partners
+                  View all notifications &rarr;
                 </Link>
-                <span>•</span>
-                <Link
-                  to="/gift-money"
-                  onClick={() => setNotifOpen(false)}
-                  className="hover:text-amber-400 transition-colors"
-                >
-                  Send a Coffee
-                </Link>
-                <span>•</span>
-                <Link
-                  to="/exchanges"
-                  onClick={() => setNotifOpen(false)}
-                  className="hover:text-sky-400 transition-colors"
-                >
-                  Exchanges
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/find-partners"
+                    onClick={() => setNotifOpen(false)}
+                    className="hover:text-emerald-400 transition-colors"
+                  >
+                    Partners
+                  </Link>
+                  <span>•</span>
+                  <Link
+                    to="/exchanges"
+                    onClick={() => setNotifOpen(false)}
+                    className="hover:text-sky-400 transition-colors"
+                  >
+                    Exchanges
+                  </Link>
+                </div>
               </div>
             </div>
           )}
