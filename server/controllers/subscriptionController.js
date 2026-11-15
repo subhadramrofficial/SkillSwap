@@ -161,11 +161,15 @@ const createRazorpaySubscription = async (req, res, next) => {
         },
       });
     } catch (rzpErr) {
-      console.error('[Razorpay Subscription Create Error]:', rzpErr.message);
+      const formatted = razorpayConfig.formatRazorpayError(rzpErr);
+      console.error('[Razorpay Subscription Create Error]:', formatted, {
+        statusCode: rzpErr.statusCode,
+        error: rzpErr.error,
+      });
       return errorResponse(
         res,
         502,
-        `Razorpay subscription creation failed: ${rzpErr.message}. Please verify your Razorpay API credentials in the backend environment.`
+        `Razorpay subscription creation failed: ${formatted}. Please verify your Razorpay API credentials and ensure Subscriptions are activated in the Razorpay Dashboard.`
       );
     }
   } catch (error) {

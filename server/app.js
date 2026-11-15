@@ -39,13 +39,13 @@ const { handleRazorpayWebhook } = require('./controllers/webhookController');
 // Razorpay Webhook Endpoint (Raw body parser required for cryptographic signature verification)
 app.post(
   '/api/v1/razorpay/webhook',
-  express.raw({ type: 'application/json' }),
+  express.raw({ type: '*/*' }),
   handleRazorpayWebhook
 );
 // Retain legacy path alias for backwards compatibility
 app.post(
   '/api/v1/stripe/webhook',
-  express.raw({ type: 'application/json' }),
+  express.raw({ type: '*/*' }),
   handleRazorpayWebhook
 );
 

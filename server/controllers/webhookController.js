@@ -42,7 +42,9 @@ const sendNotificationSafely = async ({ recipient, sender, exchangeId, title, me
  */
 const handleRazorpayWebhook = async (req, res) => {
   const sig = req.headers['x-razorpay-signature'];
-  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
+  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
 
   // 1. Require configured secret and signature header
   if (!webhookSecret) {
@@ -50,15 +52,34 @@ const handleRazorpayWebhook = async (req, res) => {
     return res.status(400).send('Webhook secret is not configured');
   }
 
+  // Detect accidental URL pasted into webhook secret
+  if (webhookSecret.startsWith('http://') || webhookSecret.startsWith('https://')) {
+    console.error(
+      `[Razorpay Webhook Error] Misconfigured secret: RAZORPAY_WEBHOOK_SECRET is currently set to a URL ("${webhookSecret}") instead of the secret token configured in Razorpay Dashboard -> Settings -> Webhooks.`
+    );
+  }
+
   if (!sig) {
-    console.error('[Razorpay Webhook Error] Missing x-razorpay-signature header');
+    console.error('[Razorpay Webhook Error] Missing x-razorpay-signature header in request');
     return res.status(400).send('Missing x-razorpay-signature header');
   }
 
-  const rawPayload = req.rawBody || req.body;
+  const rawPayload = Buffer.isBuffer(req.body)
+    ? req.body
+    : (req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body)));
+
   const isValid = verifyWebhookSignature(rawPayload, sig, webhookSecret);
   if (!isValid) {
-    console.error('[Razorpay Webhook Error] Webhook signature verification failed');
+    console.error(
+      '[Razorpay Webhook Error] Webhook signature verification failed. Ensure RAZORPAY_WEBHOOK_SECRET matches the Secret entered in Razorpay Dashboard -> Settings -> Webhooks.',
+      {
+        receivedSignatureLength: sig ? sig.length : 0,
+        payloadType: typeof rawPayload,
+        isBuffer: Buffer.isBuffer(rawPayload),
+        payloadLength: rawPayload ? (Buffer.isBuffer(rawPayload) ? rawPayload.length : Buffer.byteLength(String(rawPayload))) : 0,
+        secretLength: webhookSecret.length,
+      }
+    );
     return res.status(400).send('Webhook signature verification failed');
   }
 
@@ -73,6 +94,7 @@ const handleRazorpayWebhook = async (req, res) => {
       event = req.body;
     }
   } catch (err) {
+    console.error('[Razorpay Webhook Error] Failed to parse JSON payload:', err.message);
     return res.status(400).json({ error: 'Invalid JSON payload' });
   }
 

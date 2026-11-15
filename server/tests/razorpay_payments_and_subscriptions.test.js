@@ -385,13 +385,13 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
     });
 
     it('2. Should create a Razorpay Subscription for Monthly Pro', async () => {
-      jest.spyOn(razorpayConfig, 'getOrCreatePlanId').mockResolvedValue('plan_monthly_pro_test');
+      const getPlanSpy = jest.spyOn(razorpayConfig, 'getOrCreatePlanId').mockResolvedValue('plan_monthly_pro_test');
       const rzp = razorpayConfig.getRazorpay();
       const createSubSpy = jest.spyOn(rzp.subscriptions, 'create').mockResolvedValue({
         id: `sub_rzp_monthly_${Date.now()}`,
         status: 'created',
       });
-      jest.spyOn(razorpayConfig, 'getRazorpay').mockReturnValue(rzp);
+      const getRzpSpy = jest.spyOn(razorpayConfig, 'getRazorpay').mockReturnValue(rzp);
 
       const res = await request(app)
         .post('/api/v1/subscriptions/create-subscription')
@@ -409,7 +409,9 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
       const user = await User.findById(userAId);
       expect(user.subscription.razorpaySubscriptionId).toBe(monthlySubId);
 
+      getPlanSpy.mockRestore();
       createSubSpy.mockRestore();
+      getRzpSpy.mockRestore();
     });
 
     it('2b. Should return 502 with meaningful error if Razorpay plan creation or credentials fail', async () => {
@@ -425,6 +427,64 @@ describe('SkillSwap — Razorpay Payments & Subscriptions Integration Tests', ()
       expect(res.status).toBe(502);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toContain('Failed to create or retrieve Razorpay subscription plan');
+    });
+
+    it('2c. Should validate and use manual RAZORPAY_PLAN_MONTHLY_ID when configured', async () => {
+      const originalEnv = process.env.RAZORPAY_PLAN_MONTHLY_ID;
+      process.env.RAZORPAY_PLAN_MONTHLY_ID = 'plan_monthly_valid_123';
+
+      const rzp = razorpayConfig.getRazorpay();
+      const fetchSpy = jest.spyOn(rzp.plans, 'fetch').mockResolvedValue({
+        id: 'plan_monthly_valid_123',
+        period: 'monthly',
+        item: { amount: 49900, currency: 'INR' },
+      });
+      jest.spyOn(razorpayConfig, 'getRazorpay').mockReturnValue(rzp);
+
+      const planId = await razorpayConfig.getOrCreatePlanId('monthly');
+      expect(planId).toBe('plan_monthly_valid_123');
+      expect(fetchSpy).toHaveBeenCalledWith('plan_monthly_valid_123');
+
+      fetchSpy.mockRestore();
+      process.env.RAZORPAY_PLAN_MONTHLY_ID = originalEnv;
+    });
+
+    it('2d. Should reject manual Plan ID if plans.fetch fails or does not belong to the account', async () => {
+      const originalEnv = process.env.RAZORPAY_PLAN_MONTHLY_ID;
+      process.env.RAZORPAY_PLAN_MONTHLY_ID = 'plan_invalid_fake_456';
+
+      const rzp = razorpayConfig.getRazorpay();
+      const fetchSpy = jest.spyOn(rzp.plans, 'fetch').mockRejectedValue({
+        statusCode: 404,
+        error: { code: 'BAD_REQUEST_ERROR', description: 'The id provided does not exist' },
+      });
+      jest.spyOn(razorpayConfig, 'getRazorpay').mockReturnValue(rzp);
+
+      await expect(razorpayConfig.getOrCreatePlanId('monthly')).rejects.toThrow(
+        /could not be verified on your Razorpay account/
+      );
+
+      fetchSpy.mockRestore();
+      process.env.RAZORPAY_PLAN_MONTHLY_ID = originalEnv;
+    });
+
+    it('2e. formatRazorpayError extracts status code and description without leaking secrets', () => {
+      const err1 = { statusCode: 401, error: 'Unauthorized' };
+      expect(razorpayConfig.formatRazorpayError(err1)).toBe('Status 401 - Unauthorized');
+
+      const err2 = {
+        statusCode: 400,
+        error: { code: 'BAD_REQUEST_ERROR', description: 'Invalid plan id provided' },
+      };
+      expect(razorpayConfig.formatRazorpayError(err2)).toContain('Status 400 - Invalid plan id provided');
+
+      const errWithSecret = {
+        statusCode: 500,
+        message: 'Something broke',
+        key_secret: 'secret123',
+      };
+      const formatted = razorpayConfig.formatRazorpayError(errWithSecret);
+      expect(formatted).not.toContain('secret123');
     });
 
     it('3. Should verify subscription with valid signature and activate Pro membership', async () => {
