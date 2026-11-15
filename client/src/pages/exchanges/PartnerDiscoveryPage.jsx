@@ -21,9 +21,11 @@ import {
 } from 'lucide-react';
 import skillService from '../../services/skillService';
 import subscriptionService from '../../services/subscriptionService';
+import { useNotifications } from '../../context/NotificationContext';
 import ExchangeRequestModal from '../../components/exchanges/ExchangeRequestModal';
 
 const PartnerDiscoveryPage = () => {
+  const { markMatchesAsRead, refreshBadges } = useNotifications();
   const [suggestions, setSuggestions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [stats, setStats] = useState({ total: 0, mutualCount: 0, complementaryCount: 0 });
@@ -59,6 +61,9 @@ const PartnerDiscoveryPage = () => {
           mutualCount: data.mutualCount ?? list.filter((s) => s.matchType === 'mutual').length,
           complementaryCount: data.complementaryCount ?? list.filter((s) => s.matchType === 'complementary').length,
         });
+        // Suggestions have been generated/fetched on backend; mark match notifications read and refresh badges
+        markMatchesAsRead();
+        refreshBadges();
       } else if (matchRes.status === 'rejected') {
         setError(matchRes.reason?.message || 'Unable to fetch match suggestions.');
       }
@@ -79,7 +84,8 @@ const PartnerDiscoveryPage = () => {
 
   useEffect(() => {
     fetchMatches();
-  }, []);
+    markMatchesAsRead();
+  }, [markMatchesAsRead]);
 
   const handlePropose = (partnerUser, skillToLearn) => {
     setActivePartner(partnerUser);

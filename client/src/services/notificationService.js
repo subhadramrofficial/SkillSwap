@@ -9,6 +9,14 @@ export const notificationService = {
     return await api.patch('/notifications/exchanges/read');
   },
 
+  markMatchesAsRead: async () => {
+    return await api.patch('/notifications/matches/read');
+  },
+
+  markGiftsAsRead: async () => {
+    return await api.patch('/notifications/gifts/read');
+  },
+
   markConversationAsRead: async (conversationId) => {
     return await api.patch(`/conversations/${conversationId}/read`);
   },
@@ -23,6 +31,14 @@ export const notificationService = {
 
   markNotificationAsRead: async (notificationId) => {
     return await api.patch(`/notifications/${notificationId}/read`);
+  },
+
+  deleteNotification: async (notificationId) => {
+    return await api.delete(`/notifications/${notificationId}`);
+  },
+
+  deleteAllReadNotifications: async () => {
+    return await api.delete('/notifications/read-all');
   },
 };
 

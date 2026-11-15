@@ -517,8 +517,12 @@ class MatchingService {
       const notificationService = require('./notificationService');
       const createdNotifications = [];
 
+      const currentUser = await User.findById(userId).select('name');
+      const currentUserName = currentUser?.name || 'A learning partner';
+
       for (const match of mutualMatches) {
         const partnerId = match.user._id;
+        const partnerName = match.user?.name || 'A learning partner';
 
         // 1. Notify current user if not already notified
         const existsForUser = await Notification.findOne({
@@ -532,8 +536,9 @@ class MatchingService {
             recipient: userId,
             sender: partnerId,
             type: 'new_match',
+            category: 'matches',
             title: 'New Skill Match!',
-            message: 'You have a new skill match! Check out your potential learning partner.',
+            message: `You have a new skill match with ${partnerName}! A mutual skill match was found. Explore their profile in Find Partners.`,
             link: '/find-partners',
           });
           if (n1) createdNotifications.push(n1);
@@ -551,8 +556,9 @@ class MatchingService {
             recipient: partnerId,
             sender: userId,
             type: 'new_match',
+            category: 'matches',
             title: 'New Skill Match!',
-            message: 'You have a new skill match! Check out your potential learning partner.',
+            message: `You have a new skill match with ${currentUserName}! A mutual skill match was found. Explore their profile in Find Partners.`,
             link: '/find-partners',
           });
           if (n2) createdNotifications.push(n2);

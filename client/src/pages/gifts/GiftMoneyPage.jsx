@@ -22,9 +22,11 @@ import {
 } from 'lucide-react';
 import giftService from '../../services/giftService';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationContext';
 
 const GiftMoneyPage = () => {
   const { user } = useAuth();
+  const { markGiftsAsRead, refreshBadges } = useNotifications();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('received'); // 'received' | 'sent'
   const [history, setHistory] = useState({ 
@@ -45,6 +47,8 @@ const GiftMoneyPage = () => {
       if (res.success && res.data) {
         setHistory(res.data);
       }
+      markGiftsAsRead();
+      refreshBadges();
     } catch (err) {
       setError(err.message || 'Unable to load gift history.');
     } finally {
@@ -54,7 +58,8 @@ const GiftMoneyPage = () => {
 
   useEffect(() => {
     fetchGiftHistory();
-  }, []);
+    markGiftsAsRead();
+  }, [markGiftsAsRead]);
 
   // Handle return status if redirected back
   useEffect(() => {

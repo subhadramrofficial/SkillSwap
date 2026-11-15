@@ -281,4 +281,341 @@ describe('SkillSwap — Complete Notification System End-to-End Verification', (
       expect(notifInDb.isRead).toBe(false);
     });
   });
+
+  describe('4. Category-Specific Read Operations (/matches/read and /gifts/read)', () => {
+    beforeEach(async () => {
+      // Clear notifications for User B
+      await Notification.deleteMany({ recipient: userBId });
+    });
+
+    it('marks only match notifications as read via PATCH /matches/read', async () => {
+      // Create 1 match notification and 1 gift notification
+      await notificationService.createNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'new_match',
+        category: 'matches',
+        title: 'New Skill Match!',
+        message: 'Match with User Alpha',
+        link: '/find-partners',
+      });
+      await notificationService.createNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'coffee_gift',
+        category: 'gifts',
+        title: 'Coffee Gift!',
+        message: 'Coffee from User Alpha',
+        link: '/gift-money',
+      });
+
+      const beforeBadges = await request(app)
+        .get('/api/v1/notifications/badges')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(beforeBadges.body.data.matches).toBe(1);
+      expect(beforeBadges.body.data.gifts).toBe(1);
+
+      // Call PATCH /matches/read
+      const res = await request(app)
+        .patch('/api/v1/notifications/matches/read')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(res.statusCode).toBe(200);
+
+      // Verify matches badge is now 0, gifts remains 1
+      const afterBadges = await request(app)
+        .get('/api/v1/notifications/badges')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(afterBadges.body.data.matches).toBe(0);
+      expect(afterBadges.body.data.gifts).toBe(1);
+      expect(afterBadges.body.data.totalNotifications).toBe(1);
+
+      // Verify DB
+      const matchNotif = await Notification.findOne({ recipient: userBId, type: 'new_match' });
+      const giftNotif = await Notification.findOne({ recipient: userBId, type: 'coffee_gift' });
+      expect(matchNotif.isRead).toBe(true);
+      expect(giftNotif.isRead).toBe(false);
+    });
+
+    it('marks only gift notifications as read via PATCH /gifts/read', async () => {
+      // Create 1 match notification and 1 gift notification
+      await notificationService.createNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'new_match',
+        category: 'matches',
+        title: 'New Skill Match!',
+        message: 'Match with User Alpha',
+        link: '/find-partners',
+      });
+      await notificationService.createNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'coffee_gift',
+        category: 'gifts',
+        title: 'Coffee Gift!',
+        message: 'Coffee from User Alpha',
+        link: '/gift-money',
+      });
+
+      // Call PATCH /gifts/read
+      const res = await request(app)
+        .patch('/api/v1/notifications/gifts/read')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(res.statusCode).toBe(200);
+
+      // Verify gifts badge is now 0, matches remains 1
+      const afterBadges = await request(app)
+        .get('/api/v1/notifications/badges')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(afterBadges.body.data.gifts).toBe(0);
+      expect(afterBadges.body.data.matches).toBe(1);
+      expect(afterBadges.body.data.totalNotifications).toBe(1);
+
+      // Verify DB
+      const matchNotif = await Notification.findOne({ recipient: userBId, type: 'new_match' });
+      const giftNotif = await Notification.findOne({ recipient: userBId, type: 'coffee_gift' });
+      expect(matchNotif.isRead).toBe(false);
+      expect(giftNotif.isRead).toBe(true);
+    });
+  });
+
+  describe('5. Delete Notification Operations (DELETE /:id and DELETE /read-all)', () => {
+    let readNotifB1, readNotifB2, unreadNotifB, notifA;
+
+    beforeEach(async () => {
+      await Notification.deleteMany({ recipient: { $in: [userAId, userBId] } });
+
+      // Create read and unread notifications for User B
+      readNotifB1 = await Notification.create({
+        recipient: userBId,
+        sender: userAId,
+        type: 'new_match',
+        category: 'matches',
+        title: 'Read Match Notification 1',
+        message: 'Match details 1',
+        isRead: true,
+        readAt: new Date(),
+        link: '/find-partners',
+      });
+
+      readNotifB2 = await Notification.create({
+        recipient: userBId,
+        sender: userAId,
+        type: 'coffee_gift',
+        category: 'gifts',
+        title: 'Read Gift Notification 2',
+        message: 'Gift details 2',
+        isRead: true,
+        readAt: new Date(),
+        link: '/gift-money',
+      });
+
+      unreadNotifB = await Notification.create({
+        recipient: userBId,
+        sender: userAId,
+        type: 'exchange_request',
+        category: 'exchanges',
+        title: 'Unread Exchange Notification',
+        message: 'Exchange request pending',
+        isRead: false,
+        link: '/exchanges',
+      });
+
+      // Notification for User A
+      notifA = await Notification.create({
+        recipient: userAId,
+        sender: userBId,
+        type: 'new_match',
+        category: 'matches',
+        title: 'User A notification',
+        message: 'Private to User A',
+        isRead: true,
+        readAt: new Date(),
+        link: '/find-partners',
+      });
+    });
+
+    it('successfully deletes an individual read notification belonging to authenticated user', async () => {
+      const res = await request(app)
+        .delete(`/api/v1/notifications/${readNotifB1._id}`)
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // Verify deleted from MongoDB
+      const checkInDb = await Notification.findById(readNotifB1._id);
+      expect(checkInDb).toBeNull();
+
+      // Verify other notifications for User B remain intact
+      const checkB2 = await Notification.findById(readNotifB2._id);
+      expect(checkB2).not.toBeNull();
+      const checkUnread = await Notification.findById(unreadNotifB._id);
+      expect(checkUnread).not.toBeNull();
+    });
+
+    it('rejects attempt to delete another user notification with 403 Forbidden', async () => {
+      // User B attempts to delete User A's notification
+      const res = await request(app)
+        .delete(`/api/v1/notifications/${notifA._id}`)
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body.message).toMatch(/Forbidden: You cannot delete another user's notification/i);
+
+      // Verify User A's notification was NOT deleted from DB
+      const checkA = await Notification.findById(notifA._id);
+      expect(checkA).not.toBeNull();
+    });
+
+    it('returns 404 when deleting non-existent notification', async () => {
+      const fakeId = new mongoose.Types.ObjectId();
+      const res = await request(app)
+        .delete(`/api/v1/notifications/${fakeId}`)
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(res.statusCode).toBe(404);
+      expect(res.body.message).toMatch(/Notification not found/i);
+    });
+
+    it('returns 400 when passing invalid notification ID format', async () => {
+      const res = await request(app)
+        .delete('/api/v1/notifications/invalid-id-123')
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body.message).toMatch(/Invalid notification identifier format/i);
+    });
+
+    it('deletes all read notifications while preserving unread notifications', async () => {
+      const res = await request(app)
+        .delete('/api/v1/notifications/read-all')
+        .set('Authorization', `Bearer ${userBToken}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.deletedCount).toBe(2);
+
+      // Both read notifications of User B must be deleted
+      const checkB1 = await Notification.findById(readNotifB1._id);
+      const checkB2 = await Notification.findById(readNotifB2._id);
+      expect(checkB1).toBeNull();
+      expect(checkB2).toBeNull();
+
+      // Unread notification of User B MUST NOT be deleted
+      const checkUnread = await Notification.findById(unreadNotifB._id);
+      expect(checkUnread).not.toBeNull();
+      expect(checkUnread.isRead).toBe(false);
+
+      // User A's read notification MUST NOT be deleted (isolated to authenticated user)
+      const checkA = await Notification.findById(notifA._id);
+      expect(checkA).not.toBeNull();
+
+      // Badge count for User B reflects remaining unread
+      const badgeRes = await request(app)
+        .get('/api/v1/notifications/badges')
+        .set('Authorization', `Bearer ${userBToken}`);
+      expect(badgeRes.body.data.totalNotifications).toBe(1);
+      expect(badgeRes.body.data.exchanges).toBe(1);
+    });
+  });
+
+  describe('6. Mutual Match Flow & De-duplication Verification', () => {
+    it('creates matching skills, triggers suggestions, generates notifications with link /find-partners, and avoids duplicates', async () => {
+      const matchingService = require('../services/matchingService');
+
+      // Clear previous in-flight exchanges and notifications
+      await Exchange.deleteMany({ $or: [{ requester: userAId }, { recipient: userAId }] });
+      await Notification.deleteMany({ recipient: { $in: [userAId, userBId] } });
+
+      // User A offers React (skillAId), wants 'Database Design & MongoDB'
+      await SkillListing.create({
+        title: 'Database Design & MongoDB',
+        description: 'User A wants to learn DB design',
+        category: categoryId,
+        owner: userAId,
+        listingType: 'wanted',
+        experienceLevel: 'intermediate',
+        isActive: true,
+      });
+
+      // User B offers DB design (skillBId), wants 'Fullstack React Architecture'
+      await SkillListing.create({
+        title: 'Fullstack React Architecture',
+        description: 'User B wants to learn React',
+        category: categoryId,
+        owner: userBId,
+        listingType: 'wanted',
+        experienceLevel: 'advanced',
+        isActive: true,
+      });
+
+      // Call checkAndNotifyNewMatches for User A
+      const notifsFirst = await matchingService.checkAndNotifyNewMatches(userAId);
+      expect(notifsFirst.length).toBe(2); // One for User A, one for User B
+
+      // Verify User A's notification details
+      const notifForA = await Notification.findOne({ recipient: userAId, type: 'new_match' });
+      expect(notifForA).toBeDefined();
+      expect(notifForA.category).toBe('matches');
+      expect(notifForA.link).toBe('/find-partners');
+      expect(notifForA.title).toBe('New Skill Match!');
+      expect(notifForA.message).toContain('mutual skill match');
+
+      // Verify User B's notification details
+      const notifForB = await Notification.findOne({ recipient: userBId, type: 'new_match' });
+      expect(notifForB).toBeDefined();
+      expect(notifForB.category).toBe('matches');
+      expect(notifForB.link).toBe('/find-partners');
+
+      // Subsequent call (e.g. page refresh / revisit) does NOT duplicate
+      const notifsSecond = await matchingService.checkAndNotifyNewMatches(userAId);
+      expect(notifsSecond.length).toBe(0);
+
+      const allMatchesA = await Notification.find({ recipient: userAId, type: 'new_match' });
+      expect(allMatchesA.length).toBe(1);
+    });
+  });
+
+  describe('7. Coffee Gift vs Exchange Categorization Separation', () => {
+    it('creates distinct category and link for coffee gifts vs exchanges', async () => {
+      const coffeeNotif = await notificationService.createNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'coffee_gift',
+        category: 'gifts',
+        title: 'Coffee Gift Received!',
+        message: 'User Alpha sent 1 coffee',
+        link: '/gift-money',
+      });
+
+      const testExchange = await Exchange.create({
+        requester: userAId,
+        recipient: userBId,
+        offeredSkill: skillAId,
+        requestedSkill: skillBId,
+        status: 'pending',
+      });
+
+      const exchangeNotif = await notificationService.createExchangeNotification({
+        recipient: userBId,
+        sender: userAId,
+        type: 'exchange_request',
+        exchangeId: testExchange._id,
+        title: 'New Exchange Proposal',
+        message: 'Exchange proposal received',
+      });
+
+      expect(coffeeNotif.category).toBe('gifts');
+      expect(coffeeNotif.link).toBe('/gift-money');
+
+      expect(exchangeNotif.category).toBe('exchanges');
+      expect(exchangeNotif.link).toBe('/exchanges');
+
+      // Verify getBadgeCounts separates counts
+      const badges = await notificationService.getUnreadBadgeCounts(userBId);
+      expect(badges.gifts).toBeGreaterThanOrEqual(1);
+      expect(badges.exchanges).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

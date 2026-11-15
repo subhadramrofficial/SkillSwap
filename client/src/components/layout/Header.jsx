@@ -14,7 +14,8 @@ import {
   Bell,
   Coffee,
   ArrowLeftRight,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 
@@ -33,6 +34,7 @@ const Header = ({ onOpenMobileMenu }) => {
     loadingNotifications,
     markAllAsRead,
     markSingleAsRead,
+    deleteNotification,
     fetchNotifications,
   } = useNotifications();
 
@@ -203,8 +205,9 @@ const Header = ({ onOpenMobileMenu }) => {
                   </div>
                 ) : (
                   notifications.map((item) => {
-                    const isNewMatch = item.type === 'new_match';
-                    const isCoffeeGift = item.type === 'coffee_gift';
+                    const cat = item.category || (item.type === 'coffee_gift' ? 'gifts' : item.type === 'new_match' ? 'matches' : 'exchanges');
+                    const isNewMatch = cat === 'matches';
+                    const isCoffeeGift = cat === 'gifts';
                     const targetLink = item.link || (isNewMatch ? '/find-partners' : isCoffeeGift ? '/gift-money' : '/exchanges');
 
                     return (
@@ -239,9 +242,22 @@ const Header = ({ onOpenMobileMenu }) => {
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-white truncate">
-                              {item.title || (isNewMatch ? 'New Match!' : isCoffeeGift ? 'Coffee Gift!' : 'Exchange Update')}
-                            </p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${
+                                  isNewMatch
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : isCoffeeGift
+                                    ? 'bg-amber-500/10 text-amber-400'
+                                    : 'bg-sky-500/10 text-sky-400'
+                                }`}
+                              >
+                                {isNewMatch ? 'Find Partners' : isCoffeeGift ? 'Send a Coffee' : 'Exchanges'}
+                              </span>
+                              <p className="text-xs font-bold text-white truncate">
+                                {item.title || (isNewMatch ? 'New Match!' : isCoffeeGift ? 'Coffee Gift!' : 'Exchange Update')}
+                              </p>
+                            </div>
                             <span className="text-[10px] text-slate-400 shrink-0">
                               {formatTimeAgo(item.createdAt)}
                             </span>
@@ -251,7 +267,20 @@ const Header = ({ onOpenMobileMenu }) => {
                           </p>
                         </div>
 
-                        {!item.isRead && (
+                        {item.isRead ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(item._id);
+                            }}
+                            title="Delete notification"
+                            className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0 self-center"
+                            aria-label="Delete notification"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
                           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-2" />
                         )}
                       </div>

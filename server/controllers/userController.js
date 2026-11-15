@@ -2,6 +2,8 @@ const User = require('../models/User');
 const SkillListing = require('../models/SkillListing');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 
+const matchingService = require('../services/matchingService');
+
 /**
  * @route   PATCH /api/v1/users/me
  * @desc    Update authenticated user's profile details
@@ -19,6 +21,14 @@ const updateMe = async (req, res, next) => {
     if (availability) user.availability = availability;
 
     await user.save();
+
+    if (Array.isArray(learningInterests)) {
+      try {
+        await matchingService.checkAndNotifyNewMatches(user._id);
+      } catch (err) {
+        console.warn('[User Profile Match Notification Warning]:', err.message);
+      }
+    }
 
     return successResponse(res, 200, 'Profile updated successfully', user);
   } catch (error) {

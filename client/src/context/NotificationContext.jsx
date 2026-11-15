@@ -125,6 +125,13 @@ export const NotificationProvider = ({ children }) => {
           return [newNotif, ...prev];
         });
         setTotalNotificationsCount((prev) => prev + 1);
+        if (newNotif.type === 'new_match' || newNotif.category === 'matches') {
+          setMatchUnreadCount((prev) => prev + 1);
+        } else if (newNotif.type === 'coffee_gift' || newNotif.category === 'gifts') {
+          setGiftUnreadCount((prev) => prev + 1);
+        } else if (newNotif.type?.startsWith('exchange_') || newNotif.category === 'exchanges') {
+          setExchangeUnreadCount((prev) => prev + 1);
+        }
       }
       fetchBadgeCounts();
     };
@@ -156,6 +163,7 @@ export const NotificationProvider = ({ children }) => {
       fetchNotifications();
     };
 
+    socket.on('badge_update', handleExchangeBadgeUpdate);
     socket.on('exchange_badge_update', handleExchangeBadgeUpdate);
     socket.on('new_notification', handleNewNotification);
     socket.on('user_alert', handleUserAlert);
@@ -163,6 +171,7 @@ export const NotificationProvider = ({ children }) => {
     socket.on('connect', handleConnect);
 
     return () => {
+      socket.off('badge_update', handleExchangeBadgeUpdate);
       socket.off('exchange_badge_update', handleExchangeBadgeUpdate);
       socket.off('new_notification', handleNewNotification);
       socket.off('user_alert', handleUserAlert);
@@ -187,6 +196,38 @@ export const NotificationProvider = ({ children }) => {
       fetchBadgeCounts();
     }
   }, [socket, isConnected, fetchBadgeCounts]);
+
+  // Mark all match notifications as read
+  const markMatchesAsRead = useCallback(async () => {
+    setMatchUnreadCount(0);
+    setNotifications((prev) =>
+      prev.map((n) => (n.type === 'new_match' || n.category === 'matches' ? { ...n, isRead: true } : n))
+    );
+
+    try {
+      await notificationService.markMatchesAsRead();
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Mark Matches Read Error]', err.message);
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts]);
+
+  // Mark all coffee gift notifications as read
+  const markGiftsAsRead = useCallback(async () => {
+    setGiftUnreadCount(0);
+    setNotifications((prev) =>
+      prev.map((n) => (n.type === 'coffee_gift' || n.category === 'gifts' ? { ...n, isRead: true } : n))
+    );
+
+    try {
+      await notificationService.markGiftsAsRead();
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Mark Gifts Read Error]', err.message);
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts]);
 
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
@@ -220,6 +261,35 @@ export const NotificationProvider = ({ children }) => {
       fetchBadgeCounts();
     }
   }, [fetchBadgeCounts]);
+
+  // Delete single notification
+  const deleteNotification = useCallback(async (notificationId) => {
+    if (!notificationId) return;
+    setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
+
+    try {
+      await notificationService.deleteNotification(notificationId);
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Delete Notification Error]', err.message);
+      fetchNotifications();
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts, fetchNotifications]);
+
+  // Delete all read notifications
+  const deleteAllRead = useCallback(async () => {
+    setNotifications((prev) => prev.filter((n) => !n.isRead));
+
+    try {
+      await notificationService.deleteAllReadNotifications();
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Delete All Read Error]', err.message);
+      fetchNotifications();
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts, fetchNotifications]);
 
   // Mark specific conversation messages as read
   const markConversationAsRead = useCallback(async (conversationId) => {
@@ -266,8 +336,12 @@ export const NotificationProvider = ({ children }) => {
     loadingNotifications,
     fetchNotifications,
     markExchangesAsRead,
+    markMatchesAsRead,
+    markGiftsAsRead,
     markAllAsRead,
     markSingleAsRead,
+    deleteNotification,
+    deleteAllRead,
     markConversationAsRead,
     refreshBadges: fetchBadgeCounts,
   };

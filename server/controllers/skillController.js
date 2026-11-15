@@ -294,8 +294,12 @@ const createSkill = async (req, res, next) => {
       .populate('category', 'name slug icon')
       .populate('owner', 'name profileImage bio availability');
 
-    // Asynchronously check and notify users of new matches
-    matchingService.checkAndNotifyNewMatches(req.user._id).catch(() => {});
+    // Check and notify users of newly established mutual matches
+    try {
+      await matchingService.checkAndNotifyNewMatches(req.user._id);
+    } catch (matchErr) {
+      console.warn('[Create Skill Match Notification Warning]:', matchErr.message);
+    }
 
     return successResponse(res, 201, 'Skill listing created successfully', populated);
   } catch (error) {
@@ -338,6 +342,13 @@ const updateSkill = async (req, res, next) => {
     const populated = await SkillListing.findById(listing._id)
       .populate('category', 'name slug icon')
       .populate('owner', 'name profileImage bio availability');
+
+    // Check and notify users of newly established mutual matches after update
+    try {
+      await matchingService.checkAndNotifyNewMatches(req.user._id);
+    } catch (matchErr) {
+      console.warn('[Update Skill Match Notification Warning]:', matchErr.message);
+    }
 
     return successResponse(res, 200, 'Skill listing updated successfully', populated);
   } catch (error) {

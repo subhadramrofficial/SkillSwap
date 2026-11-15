@@ -30,6 +30,20 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    category: {
+      type: String,
+      enum: {
+        values: ['exchanges', 'gifts', 'matches', 'chat', 'system'],
+        message: 'Invalid notification category',
+      },
+      default: function () {
+        if (this.type === 'coffee_gift') return 'gifts';
+        if (this.type === 'new_match') return 'matches';
+        if (this.type && this.type.startsWith('exchange_')) return 'exchanges';
+        return 'system';
+      },
+      index: true,
+    },
     exchange: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Exchange',

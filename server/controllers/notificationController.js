@@ -87,10 +87,73 @@ const getNotifications = async (req, res, next) => {
   }
 };
 
+/**
+ * @route   PATCH /api/v1/notifications/matches/read
+ * @desc    Mark all unread match notifications as read
+ * @access  Private
+ */
+const markMatchNotificationsAsRead = async (req, res, next) => {
+  try {
+    const result = await notificationService.markMatchNotificationsRead(req.user._id);
+    return successResponse(res, 200, 'Match notifications marked as read', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   PATCH /api/v1/notifications/gifts/read
+ * @desc    Mark all unread coffee gift notifications as read
+ * @access  Private
+ */
+const markGiftNotificationsAsRead = async (req, res, next) => {
+  try {
+    const result = await notificationService.markGiftNotificationsRead(req.user._id);
+    return successResponse(res, 200, 'Coffee gift notifications marked as read', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   DELETE /api/v1/notifications/read-all
+ * @desc    Delete all read notifications for authenticated user
+ * @access  Private
+ */
+const deleteAllReadNotifications = async (req, res, next) => {
+  try {
+    const result = await notificationService.deleteAllReadNotifications(req.user._id);
+    return successResponse(res, 200, 'All read notifications deleted successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   DELETE /api/v1/notifications/:id
+ * @desc    Delete a single read/owned notification for authenticated user
+ * @access  Private
+ */
+const deleteNotification = async (req, res, next) => {
+  try {
+    const result = await notificationService.deleteNotification(req.user._id, req.params.id);
+    return successResponse(res, 200, 'Notification deleted successfully', result);
+  } catch (error) {
+    if (error.statusCode) {
+      return errorResponse(res, error.statusCode, error.message);
+    }
+    next(error);
+  }
+};
+
 module.exports = {
   getBadgeCounts,
   markExchangeNotificationsAsRead,
+  markMatchNotificationsAsRead,
+  markGiftNotificationsAsRead,
   markAllNotificationsAsRead,
   markSingleNotificationAsRead,
   getNotifications,
+  deleteAllReadNotifications,
+  deleteNotification,
 };

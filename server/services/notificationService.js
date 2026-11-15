@@ -22,6 +22,7 @@ class NotificationService {
       recipient,
       sender,
       type,
+      category: 'exchanges',
       exchange: exchangeId,
       title,
       message,
@@ -53,12 +54,14 @@ class NotificationService {
 
       const recipientId = recipient.toString();
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('exchange_badge_update', payload);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('badge_update', payload);
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('new_notification', notifDoc);
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('user_alert', {
         title,
         message,
         link: '/exchanges',
         type,
+        category: 'exchanges',
         notificationId: notification._id,
       });
     } catch (e) {
@@ -75,6 +78,7 @@ class NotificationService {
     recipient,
     sender,
     type,
+    category,
     title,
     message = '',
     link = '',
@@ -90,13 +94,26 @@ class NotificationService {
       return null;
     }
 
+    const determinedCategory = category || (
+      type === 'coffee_gift' ? 'gifts' :
+      type === 'new_match' ? 'matches' :
+      type && type.startsWith('exchange_') ? 'exchanges' : 'system'
+    );
+
+    const determinedLink = link || (
+      determinedCategory === 'gifts' ? '/gift-money' :
+      determinedCategory === 'matches' ? '/find-partners' :
+      '/exchanges'
+    );
+
     const doc = {
       recipient,
       sender,
       type,
+      category: determinedCategory,
       title,
       message,
-      link,
+      link: determinedLink,
       isRead: false,
     };
     if (exchangeId) doc.exchange = exchangeId;
@@ -129,12 +146,14 @@ class NotificationService {
 
       const recipientId = recipient.toString();
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('exchange_badge_update', payload);
+      io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('badge_update', payload);
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('new_notification', notifDoc);
       io.to(`user:${recipientId}`).to(`user_${recipientId}`).emit('user_alert', {
         title,
         message,
-        link,
+        link: determinedLink,
         type,
+        category: determinedCategory,
         notificationId: notification._id,
       });
     } catch (e) {
@@ -344,6 +363,174 @@ class NotificationService {
     }
 
     return { notification, counts };
+  }
+
+  /**
+   * Mark all unread match notifications as read for a user
+   */
+  async markMatchNotificationsRead(userId) {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    await Notification.updateMany(
+      {
+        recipient: userObjectId,
+        type: 'new_match',
+        isRead: false,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      }
+    );
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    try {
+      const io = getIO();
+      const payload = {
+        count: counts.totalNotifications,
+        exchanges: counts.exchanges,
+        matches: 0,
+        gifts: counts.gifts,
+        chat: counts.chat,
+        totalUnread: counts.totalUnread,
+        badges: counts,
+      };
+      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return counts;
+  }
+
+  /**
+   * Mark all unread coffee gift notifications as read for a user
+   */
+  async markGiftNotificationsRead(userId) {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    await Notification.updateMany(
+      {
+        recipient: userObjectId,
+        type: 'coffee_gift',
+        isRead: false,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      }
+    );
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    try {
+      const io = getIO();
+      const payload = {
+        count: counts.totalNotifications,
+        exchanges: counts.exchanges,
+        matches: counts.matches,
+        gifts: 0,
+        chat: counts.chat,
+        totalUnread: counts.totalUnread,
+        badges: counts,
+      };
+      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return counts;
+  }
+
+  /**
+   * Delete an individual read notification for a user
+   */
+  async deleteNotification(userId, notificationId) {
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      throw { statusCode: 400, message: 'Invalid notification identifier format.' };
+    }
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const notifObjectId = new mongoose.Types.ObjectId(notificationId);
+
+    const notification = await Notification.findOne({
+      _id: notifObjectId,
+      recipient: userObjectId,
+    });
+
+    if (!notification) {
+      const existsElsewhere = await Notification.findById(notifObjectId);
+      if (existsElsewhere) {
+        throw { statusCode: 403, message: 'Forbidden: You cannot delete another user\'s notification.' };
+      }
+      throw { statusCode: 404, message: 'Notification not found.' };
+    }
+
+    await Notification.deleteOne({ _id: notifObjectId, recipient: userObjectId });
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    try {
+      const io = getIO();
+      const payload = {
+        count: counts.totalNotifications,
+        exchanges: counts.exchanges,
+        matches: counts.matches,
+        gifts: counts.gifts,
+        chat: counts.chat,
+        totalUnread: counts.totalUnread,
+        badges: counts,
+      };
+      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return { success: true, badgeCounts: counts };
+  }
+
+  /**
+   * Delete all read notifications for a user (strictly preserves unread notifications)
+   */
+  async deleteAllReadNotifications(userId) {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const result = await Notification.deleteMany({
+      recipient: userObjectId,
+      isRead: true,
+    });
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    try {
+      const io = getIO();
+      const payload = {
+        count: counts.totalNotifications,
+        exchanges: counts.exchanges,
+        matches: counts.matches,
+        gifts: counts.gifts,
+        chat: counts.chat,
+        totalUnread: counts.totalUnread,
+        badges: counts,
+      };
+      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return {
+      success: true,
+      deletedCount: result.deletedCount,
+      badgeCounts: counts,
+    };
   }
 
   /**
