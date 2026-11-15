@@ -42,6 +42,19 @@ describe('SkillSwap - Category Loading & Add Skill Workflow Tests', () => {
 
     techCategory = catRes.body.data.find((c) => c.slug === 'programming-and-tech') || catRes.body.data[0];
     designCategory = catRes.body.data.find((c) => c.slug === 'design-and-creative-arts') || catRes.body.data[1];
+
+    const existingWeb = await SkillListing.findOne({ title: 'Fullstack Web Development' });
+    if (!existingWeb) {
+      await SkillListing.create({
+        owner: userId,
+        title: 'Fullstack Web Development',
+        category: techCategory._id,
+        listingType: 'offered',
+        experienceLevel: 'advanced',
+        description: 'Web development with modern tools',
+        isActive: true,
+      });
+    }
   });
 
   afterAll(async () => {

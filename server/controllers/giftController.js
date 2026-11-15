@@ -391,6 +391,24 @@ const sendGift = async (req, res, next) => {
 
     const parsedAmount = Number(amount);
     const cleanMessage = (message || note || '').trim();
+
+    // Throttle: check for identical transaction in the last 5 seconds to prevent double clicks
+    const fiveSecondsAgo = new Date(Date.now() - 5000);
+    const duplicateTxn = await GiftTransaction.findOne({
+      sender: userId,
+      recipient: recipientId,
+      amount: parsedAmount,
+      createdAt: { $gte: fiveSecondsAgo },
+    });
+
+    if (duplicateTxn) {
+      return errorResponse(
+        res,
+        409,
+        'Duplicate transaction detected. Please wait a few moments before sending another gift.'
+      );
+    }
+
     const transactionId = generateTransactionId('TXN-DEMO');
 
     const giftRecord = await GiftTransaction.create({
@@ -424,7 +442,13 @@ const sendGift = async (req, res, next) => {
       link: '/gift-money',
     });
 
-    return successResponse(res, 201, `Coffee gift of ₹${parsedAmount} sent successfully!`, populatedGift);
+    return successResponse(
+      res,
+      201,
+      `Coffee gift of ₹${parsedAmount} sent successfully!`,
+      populatedGift,
+      { isDemoOnly: true }
+    );
   } catch (error) {
     if (error.statusCode) {
       return errorResponse(res, error.statusCode, error.message);
@@ -475,14 +499,24 @@ const getGiftHistory = async (req, res, next) => {
       { totalAmount: 0, completedCount: 0 }
     );
 
-    return successResponse(res, 200, 'Gift history retrieved successfully', {
-      sent: sentGifts,
-      received: receivedGifts,
-      stats: {
-        sent: sentStats,
-        received: receivedStats,
+    return successResponse(
+      res,
+      200,
+      'Gift history retrieved successfully',
+      {
+        sent: sentGifts,
+        received: receivedGifts,
+        stats: {
+          sent: sentStats,
+          received: receivedStats,
+          totalSentINR: sentStats.totalAmount,
+          totalReceivedINR: receivedStats.totalAmount,
+          totalSentDemoUSD: sentStats.totalAmount,
+          totalReceivedDemoUSD: receivedStats.totalAmount,
+        },
       },
-    });
+      { isDemoOnly: true }
+    );
   } catch (error) {
     next(error);
   }

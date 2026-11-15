@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const app = require('../app');
 const User = require('../models/User');
 const SkillListing = require('../models/SkillListing');
+const SkillCategory = require('../models/SkillCategory');
 const connectDB = require('../config/db');
 
 describe('Search Suggestions and Forgot/Reset Password API Suite', () => {
@@ -29,9 +30,43 @@ describe('Search Suggestions and Forgot/Reset Password API Suite', () => {
       role: 'user',
       accountStatus: 'active',
     });
+
+    let cat = await SkillCategory.findOne({ isActive: true });
+    if (!cat) {
+      cat = await SkillCategory.create({ name: 'Programming & Tech', icon: 'Code', isActive: true });
+    }
+
+    const existingWeb = await SkillListing.findOne({ title: 'Fullstack Web Development' });
+    if (!existingWeb) {
+      await SkillListing.create({
+        owner: testUser._id,
+        title: 'Fullstack Web Development',
+        category: cat._id,
+        listingType: 'offered',
+        experienceLevel: 'advanced',
+        description: 'Modern web development with Node and React',
+        isActive: true,
+      });
+    }
+
+    const existingPython = await SkillListing.findOne({ title: 'Python for Beginners' });
+    if (!existingPython) {
+      await SkillListing.create({
+        owner: testUser._id,
+        title: 'Python for Beginners',
+        category: cat._id,
+        listingType: 'offered',
+        experienceLevel: 'intermediate',
+        description: 'Introduction to Python programming',
+        isActive: true,
+      });
+    }
   });
 
   afterAll(async () => {
+    if (testUser) {
+      await SkillListing.deleteMany({ owner: testUser._id });
+    }
     await User.deleteMany({ email: testEmail });
     await mongoose.connection.close();
   });
