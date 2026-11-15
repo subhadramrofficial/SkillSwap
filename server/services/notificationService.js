@@ -49,16 +49,103 @@ class NotificationService {
   }
 
   /**
-   * Get unread counts for both Exchanges and Chat for a user
+   * Create a generic notification, save to MongoDB, and broadcast updated badge counts via Socket.IO
+   */
+  async createNotification({
+    recipient,
+    sender,
+    type,
+    title,
+    message = '',
+    link = '',
+    exchangeId = null,
+    giftId = null,
+  }) {
+    if (!recipient || !sender || !type) {
+      return null;
+    }
+
+    // Do not notify self
+    if (recipient.toString() === sender.toString()) {
+      return null;
+    }
+
+    const doc = {
+      recipient,
+      sender,
+      type,
+      title,
+      message,
+      link,
+      isRead: false,
+    };
+    if (exchangeId) doc.exchange = exchangeId;
+    if (giftId) doc.gift = giftId;
+
+    const notification = await Notification.create(doc);
+
+    // Calculate updated badge counts
+    const badgeCounts = await this.getUnreadBadgeCounts(recipient);
+
+    // Real-time broadcast to recipient's private socket room
+    try {
+      const io = getIO();
+      io.to(`user:${recipient.toString()}`).emit('exchange_badge_update', {
+        count: badgeCounts.totalNotifications,
+        exchanges: badgeCounts.exchanges,
+        matches: badgeCounts.matches,
+        gifts: badgeCounts.gifts,
+        notification,
+      });
+      io.to(`user:${recipient.toString()}`).emit('user_alert', {
+        title,
+        message,
+        link,
+        type,
+      });
+    } catch (e) {
+      // Socket not initialized (e.g., during tests)
+    }
+
+    return notification;
+  }
+
+  /**
+   * Get unread counts for Exchanges, Matches, Gifts, Total, and Chat for a user
    */
   async getUnreadBadgeCounts(userId) {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
-    // 1. Unread exchange notifications count
-    const unreadExchanges = await Notification.countDocuments({
-      recipient: userObjectId,
-      isRead: false,
-    });
+    // 1. Unread notifications counts across categories
+    const [unreadExchanges, unreadMatches, unreadGifts, totalUnreadNotifications] = await Promise.all([
+      Notification.countDocuments({
+        recipient: userObjectId,
+        type: {
+          $in: [
+            'exchange_request',
+            'exchange_accepted',
+            'exchange_rejected',
+            'exchange_cancelled',
+            'exchange_completed',
+          ],
+        },
+        isRead: false,
+      }),
+      Notification.countDocuments({
+        recipient: userObjectId,
+        type: 'new_match',
+        isRead: false,
+      }),
+      Notification.countDocuments({
+        recipient: userObjectId,
+        type: 'coffee_gift',
+        isRead: false,
+      }),
+      Notification.countDocuments({
+        recipient: userObjectId,
+        isRead: false,
+      }),
+    ]);
 
     // 2. Unread chat messages count across all active conversations
     const userConversations = await Conversation.find({
@@ -100,15 +187,62 @@ class NotificationService {
 
     return {
       exchanges: unreadExchanges,
+      matches: unreadMatches,
+      gifts: unreadGifts,
+      totalNotifications: totalUnreadNotifications,
       chat: totalUnreadChat,
       conversationUnreadMap,
     };
   }
 
   /**
-   * Mark all unread exchange notifications as read for a user
+   * Mark exchange notifications as read for a user
    */
   async markExchangeNotificationsRead(userId) {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    await Notification.updateMany(
+      {
+        recipient: userObjectId,
+        type: {
+          $in: [
+            'exchange_request',
+            'exchange_accepted',
+            'exchange_rejected',
+            'exchange_cancelled',
+            'exchange_completed',
+          ],
+        },
+        isRead: false,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      }
+    );
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    // Broadcast updated counts to recipient's socket room
+    try {
+      const io = getIO();
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', {
+        count: counts.totalNotifications,
+        exchanges: 0,
+      });
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return counts;
+  }
+
+  /**
+   * Mark all unread notifications as read for a user
+   */
+  async markAllNotificationsRead(userId) {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     await Notification.updateMany(
@@ -129,12 +263,52 @@ class NotificationService {
       const io = getIO();
       io.to(`user:${userId.toString()}`).emit('exchange_badge_update', {
         count: 0,
+        exchanges: 0,
+        matches: 0,
+        gifts: 0,
       });
     } catch (e) {
       // Socket not initialized
     }
 
-    return { count: 0, exchanges: 0 };
+    return { count: 0, exchanges: 0, matches: 0, gifts: 0, totalNotifications: 0 };
+  }
+
+  /**
+   * Mark a single notification as read
+   */
+  async markSingleNotificationRead(userId, notificationId) {
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: notificationId,
+        recipient: userObjectId,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    const counts = await this.getUnreadBadgeCounts(userId);
+
+    try {
+      const io = getIO();
+      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', {
+        count: counts.totalNotifications,
+        exchanges: counts.exchanges,
+        matches: counts.matches,
+        gifts: counts.gifts,
+      });
+    } catch (e) {
+      // Socket not initialized
+    }
+
+    return { notification, counts };
   }
 
   /**

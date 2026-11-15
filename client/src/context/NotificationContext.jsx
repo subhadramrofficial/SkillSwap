@@ -10,13 +10,21 @@ export const NotificationProvider = ({ children }) => {
   const { socket, isConnected } = useSocket();
 
   const [exchangeUnreadCount, setExchangeUnreadCount] = useState(0);
+  const [matchUnreadCount, setMatchUnreadCount] = useState(0);
+  const [giftUnreadCount, setGiftUnreadCount] = useState(0);
+  const [totalNotificationsCount, setTotalNotificationsCount] = useState(0);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [conversationUnreadMap, setConversationUnreadMap] = useState({});
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Fetch initial badge counts from backend
   const fetchBadgeCounts = useCallback(async () => {
     if (!isAuthenticated) {
       setExchangeUnreadCount(0);
+      setMatchUnreadCount(0);
+      setGiftUnreadCount(0);
+      setTotalNotificationsCount(0);
       setChatUnreadCount(0);
       setConversationUnreadMap({});
       return;
@@ -26,6 +34,9 @@ export const NotificationProvider = ({ children }) => {
       const res = await notificationService.getBadgeCounts();
       if (res.success && res.data) {
         setExchangeUnreadCount(res.data.exchanges || 0);
+        setMatchUnreadCount(res.data.matches || 0);
+        setGiftUnreadCount(res.data.gifts || 0);
+        setTotalNotificationsCount(res.data.totalNotifications || 0);
         setChatUnreadCount(res.data.chat || 0);
         setConversationUnreadMap(res.data.conversationUnreadMap || {});
       }
@@ -34,24 +45,56 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isAuthenticated]);
 
+  // Fetch notifications list
+  const fetchNotifications = useCallback(async (unreadOnly = false) => {
+    if (!isAuthenticated) return;
+    setLoadingNotifications(true);
+    try {
+      const res = await notificationService.getNotifications({ page: 1, limit: 15, unreadOnly });
+      if (res.success && res.data) {
+        setNotifications(res.data.notifications || []);
+      }
+    } catch (err) {
+      console.warn('[Notifications Fetch Error]', err.message);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  }, [isAuthenticated]);
+
   useEffect(() => {
     fetchBadgeCounts();
-  }, [fetchBadgeCounts]);
+    if (isAuthenticated) {
+      fetchNotifications();
+    }
+  }, [fetchBadgeCounts, fetchNotifications, isAuthenticated]);
 
   // Real-time socket event listeners
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    // 1. Exchanges badge update event
+    // 1. Exchanges & alert badges update event
     const handleExchangeBadgeUpdate = (data) => {
       if (typeof data?.count === 'number') {
         setExchangeUnreadCount(data.count);
+      }
+      if (data?.badges) {
+        setExchangeUnreadCount(data.badges.exchanges || 0);
+        setMatchUnreadCount(data.badges.matches || 0);
+        setGiftUnreadCount(data.badges.gifts || 0);
+        setTotalNotificationsCount(data.badges.totalNotifications || 0);
       } else {
         fetchBadgeCounts();
       }
+      fetchNotifications();
     };
 
-    // 2. Chat badge update event
+    // 2. Direct user alert event
+    const handleUserAlert = () => {
+      fetchBadgeCounts();
+      fetchNotifications();
+    };
+
+    // 3. Chat badge update event
     const handleChatBadgeUpdate = (data) => {
       if (typeof data?.count === 'number') {
         setChatUnreadCount(data.count);
@@ -67,37 +110,70 @@ export const NotificationProvider = ({ children }) => {
     };
 
     socket.on('exchange_badge_update', handleExchangeBadgeUpdate);
+    socket.on('user_alert', handleUserAlert);
     socket.on('chat_badge_update', handleChatBadgeUpdate);
 
     return () => {
       socket.off('exchange_badge_update', handleExchangeBadgeUpdate);
+      socket.off('user_alert', handleUserAlert);
       socket.off('chat_badge_update', handleChatBadgeUpdate);
     };
-  }, [socket, isAuthenticated, fetchBadgeCounts]);
+  }, [socket, isAuthenticated, fetchBadgeCounts, fetchNotifications]);
 
   // Mark all exchange notifications as read
   const markExchangesAsRead = useCallback(async () => {
-    // Optimistic UI update
     setExchangeUnreadCount(0);
 
-    // Socket emit if connected
     if (socket && isConnected) {
       socket.emit('mark_exchanges_read');
     }
 
     try {
       await notificationService.markExchangesAsRead();
+      fetchBadgeCounts();
     } catch (err) {
       console.warn('[Mark Exchanges Read Error]', err.message);
       fetchBadgeCounts();
     }
   }, [socket, isConnected, fetchBadgeCounts]);
 
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(async () => {
+    setExchangeUnreadCount(0);
+    setMatchUnreadCount(0);
+    setGiftUnreadCount(0);
+    setTotalNotificationsCount(0);
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+
+    try {
+      await notificationService.markAllAsRead();
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Mark All Read Error]', err.message);
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts]);
+
+  // Mark single notification as read
+  const markSingleAsRead = useCallback(async (notificationId) => {
+    if (!notificationId) return;
+    setNotifications((prev) =>
+      prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n))
+    );
+
+    try {
+      await notificationService.markNotificationAsRead(notificationId);
+      fetchBadgeCounts();
+    } catch (err) {
+      console.warn('[Mark Notification Read Error]', err.message);
+      fetchBadgeCounts();
+    }
+  }, [fetchBadgeCounts]);
+
   // Mark specific conversation messages as read
   const markConversationAsRead = useCallback(async (conversationId) => {
     if (!conversationId) return;
 
-    // Optimistic UI update
     setConversationUnreadMap((prev) => {
       const currentUnread = prev[conversationId] || 0;
       if (currentUnread > 0) {
@@ -109,7 +185,6 @@ export const NotificationProvider = ({ children }) => {
       };
     });
 
-    // Socket emit if connected
     if (socket && isConnected) {
       socket.emit('mark_conversation_read', { conversationId });
     }
@@ -129,9 +204,17 @@ export const NotificationProvider = ({ children }) => {
 
   const value = {
     exchangeUnreadCount,
+    matchUnreadCount,
+    giftUnreadCount,
+    totalNotificationsCount,
     chatUnreadCount,
     conversationUnreadMap,
+    notifications,
+    loadingNotifications,
+    fetchNotifications,
     markExchangesAsRead,
+    markAllAsRead,
+    markSingleAsRead,
     markConversationAsRead,
     refreshBadges: fetchBadgeCounts,
   };

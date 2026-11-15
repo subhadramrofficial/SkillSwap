@@ -22,6 +22,8 @@ const notificationSchema = new mongoose.Schema(
           'exchange_rejected',
           'exchange_cancelled',
           'exchange_completed',
+          'new_match',
+          'coffee_gift',
         ],
         message: 'Invalid notification type',
       },
@@ -31,7 +33,13 @@ const notificationSchema = new mongoose.Schema(
     exchange: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Exchange',
-      required: true,
+      required: false,
+      index: true,
+    },
+    gift: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'GiftTransaction',
+      required: false,
       index: true,
     },
     title: {
@@ -44,6 +52,11 @@ const notificationSchema = new mongoose.Schema(
       default: '',
       trim: true,
       maxlength: 500,
+    },
+    link: {
+      type: String,
+      default: '',
+      trim: true,
     },
     isRead: {
       type: Boolean,
@@ -61,7 +74,9 @@ const notificationSchema = new mongoose.Schema(
 
 // High performance compound indexes
 notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ recipient: 1, sender: 1, type: 1 });
 notificationSchema.index({ recipient: 1, exchange: 1, type: 1 });
+notificationSchema.index({ gift: 1, type: 1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 

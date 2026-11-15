@@ -499,6 +499,72 @@ class MatchingService {
 
     return Array.from(partnerMap.values());
   }
+
+  /**
+   * Checks for newly established mutual matches for a user and creates persistent notifications
+   * without creating duplicate notifications on subsequent visits.
+   *
+   * @param {string|ObjectId} userId
+   * @returns {Promise<Array>} Newly created notification records
+   */
+  async checkAndNotifyNewMatches(userId) {
+    if (!userId) return [];
+    try {
+      const suggestions = await this.getSuggestions(userId);
+      const mutualMatches = suggestions.filter((s) => s.matchType === 'mutual' && s.user?._id);
+
+      const Notification = require('../models/Notification');
+      const notificationService = require('./notificationService');
+      const createdNotifications = [];
+
+      for (const match of mutualMatches) {
+        const partnerId = match.user._id;
+
+        // 1. Notify current user if not already notified
+        const existsForUser = await Notification.findOne({
+          recipient: userId,
+          sender: partnerId,
+          type: 'new_match',
+        });
+
+        if (!existsForUser) {
+          const n1 = await notificationService.createNotification({
+            recipient: userId,
+            sender: partnerId,
+            type: 'new_match',
+            title: 'New Skill Match!',
+            message: 'You have a new skill match! Check out your potential learning partner.',
+            link: '/find-partners',
+          });
+          if (n1) createdNotifications.push(n1);
+        }
+
+        // 2. Notify partner if not already notified
+        const existsForPartner = await Notification.findOne({
+          recipient: partnerId,
+          sender: userId,
+          type: 'new_match',
+        });
+
+        if (!existsForPartner) {
+          const n2 = await notificationService.createNotification({
+            recipient: partnerId,
+            sender: userId,
+            type: 'new_match',
+            title: 'New Skill Match!',
+            message: 'You have a new skill match! Check out your potential learning partner.',
+            link: '/find-partners',
+          });
+          if (n2) createdNotifications.push(n2);
+        }
+      }
+
+      return createdNotifications;
+    } catch (err) {
+      console.warn('[Check New Matches Warning]:', err.message);
+      return [];
+    }
+  }
 }
 
 module.exports = new MatchingService();

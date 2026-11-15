@@ -35,7 +35,6 @@ const SendGiftModal = ({
   const [selectedPreset, setSelectedPreset] = useState(100);
   const [customAmount, setCustomAmount] = useState('');
   const [message, setMessage] = useState('Thanks so much for the learning session! Enjoy a coffee on me ☕');
-  const [paymentMode, setPaymentMode] = useState('razorpay'); // 'razorpay' | 'demo'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [transactionReceipt, setTransactionReceipt] = useState(null);
@@ -58,7 +57,6 @@ const SendGiftModal = ({
       setSelectedPreset(100);
       setCustomAmount('');
       setMessage('Thanks so much for the learning session! Enjoy a coffee on me ☕');
-      setPaymentMode('razorpay');
       setError('');
       setTransactionReceipt(null);
       setCopiedId(false);
@@ -117,111 +115,95 @@ const SendGiftModal = ({
         payload.recipientId = partner._id;
       }
 
-      if (paymentMode === 'razorpay') {
-        // 1. Initialize Razorpay Order on backend
-        const res = await giftService.createOrder({
-          ...payload,
-          isDemo: false,
-        });
+      // 1. Initialize Razorpay Order on backend
+      const res = await giftService.createOrder({
+        ...payload,
+        isDemo: false,
+      });
 
-        if (!res.success || !res.data?.orderId) {
-          throw new Error(res.message || 'Failed to initialize Razorpay Order.');
-        }
-
-        const orderData = res.data;
-
-        // 2. Load Razorpay Checkout modal script
-        const isLoaded = await loadRazorpayScript();
-
-        if (!isLoaded || !window.Razorpay) {
-          throw new Error('Razorpay Checkout SDK failed to load. Please check your network connection or disable ad-blockers and try again.');
-        }
-
-        if (!orderData.keyId) {
-          throw new Error('Razorpay Key ID is not configured on the server.');
-        }
-
-        // Open interactive Razorpay checkout modal
-        const options = {
-          key: orderData.keyId,
-          amount: orderData.amountInPaise || Math.round(effectiveAmount * 100),
-          currency: orderData.currency || 'INR',
-          name: 'SkillSwap',
-          description: `Coffee Gift for ${partner?.name || 'Partner'}`,
-          image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
-          order_id: orderData.orderId,
-          prefill: {
-            name: currentUser?.name || '',
-            email: currentUser?.email || '',
-          },
-          notes: {
-            platform: 'SkillSwap',
-            type: 'coffee_gift',
-            giftId: orderData.giftId,
-            recipient: partner?.name || '',
-          },
-          theme: {
-            color: '#f59e0b', // amber-500
-          },
-          handler: async (response) => {
-            try {
-              setLoading(true);
-              const verifyRes = await giftService.verifyPayment({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                giftId: orderData.giftId,
-                orderId: orderData.orderId,
-              });
-
-              if (verifyRes.success && verifyRes.data) {
-                setTransactionReceipt(verifyRes.data);
-                setStep('receipt');
-                if (onSuccess) {
-                  onSuccess(`Coffee gift of ₹${effectiveAmount} sent to ${partner?.name || 'partner'}!`);
-                }
-              } else {
-                setError(verifyRes.message || 'Payment signature verification failed.');
-              }
-            } catch (vErr) {
-              setError(vErr.response?.data?.message || vErr.message || 'Payment verification failed.');
-            } finally {
-              setLoading(false);
-            }
-          },
-          modal: {
-            ondismiss: async () => {
-              setLoading(false);
-              setError('Checkout modal was closed before completing payment.');
-              try {
-                await giftService.cancelOrder({ orderId: orderData.orderId, giftId: orderData.giftId });
-              } catch (_) {}
-            },
-          },
-        };
-
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', (errResponse) => {
-          setError(errResponse.error?.description || 'Payment failed. Please try again.');
-          setLoading(false);
-        });
-        rzp.open();
-      } else {
-        // Simulated demo mode
-        const res = await giftService.sendGift(payload);
-
-        if (res.success && res.data) {
-          setTransactionReceipt(res.data);
-          setStep('receipt');
-          if (onSuccess) {
-            onSuccess(
-              `Coffee gift of ₹${effectiveAmount} sent to ${partner?.name || 'your partner'}!`
-            );
-          }
-        } else {
-          throw new Error(res.message || 'Failed to complete transaction.');
-        }
+      if (!res.success || !res.data?.orderId) {
+        throw new Error(res.message || 'Failed to initialize Razorpay Order.');
       }
+
+      const orderData = res.data;
+
+      // 2. Load Razorpay Checkout modal script
+      const isLoaded = await loadRazorpayScript();
+
+      if (!isLoaded || !window.Razorpay) {
+        throw new Error('Razorpay Checkout SDK failed to load. Please check your network connection or disable ad-blockers and try again.');
+      }
+
+      if (!orderData.keyId) {
+        throw new Error('Razorpay Key ID is not configured on the server.');
+      }
+
+      // Open interactive Razorpay checkout modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amountInPaise || Math.round(effectiveAmount * 100),
+        currency: orderData.currency || 'INR',
+        name: 'SkillSwap',
+        description: `Coffee Gift for ${partner?.name || 'Partner'}`,
+        image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=128&q=80',
+        order_id: orderData.orderId,
+        prefill: {
+          name: currentUser?.name || '',
+          email: currentUser?.email || '',
+          contact: currentUser?.phone || '',
+        },
+        notes: {
+          platform: 'SkillSwap',
+          type: 'coffee_gift',
+          giftId: orderData.giftId,
+          recipient: partner?.name || '',
+        },
+        theme: {
+          color: '#f59e0b', // amber-500
+        },
+        handler: async (response) => {
+          try {
+            setLoading(true);
+            const verifyRes = await giftService.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              giftId: orderData.giftId,
+              orderId: orderData.orderId,
+            });
+
+            if (verifyRes.success && verifyRes.data) {
+              setTransactionReceipt(verifyRes.data);
+              setStep('receipt');
+              if (onSuccess) {
+                onSuccess(`Coffee gift of ₹${effectiveAmount} sent to ${partner?.name || 'partner'}!`);
+              }
+            } else {
+              setError(verifyRes.message || 'Payment signature verification failed.');
+            }
+          } catch (vErr) {
+            setError(vErr.response?.data?.message || vErr.message || 'Payment verification failed.');
+          } finally {
+            setLoading(false);
+          }
+        },
+        modal: {
+          ondismiss: async () => {
+            setLoading(false);
+            setError('Checkout modal was closed before completing payment.');
+            try {
+              await giftService.cancelOrder({ orderId: orderData.orderId, giftId: orderData.giftId });
+            } catch (_) {}
+          },
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', (errResponse) => {
+        setError(errResponse.error?.description || 'Payment failed. Please try again.');
+        setLoading(false);
+      });
+      rzp.open();
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to process gift payment.');
       setStep('confirm');
@@ -386,44 +368,20 @@ const SendGiftModal = ({
               </div>
             </div>
 
-            {/* Payment Method Selector */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-300">
-                Payment Method
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('razorpay')}
-                  className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all ${
-                    paymentMode === 'razorpay'
-                      ? 'bg-emerald-500/10 border-emerald-500/40 text-white shadow-sm'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <CreditCard className={`w-4 h-4 mt-0.5 shrink-0 ${paymentMode === 'razorpay' ? 'text-emerald-400' : 'text-slate-500'}`} />
-                  <div>
-                    <div className="text-xs font-bold">Razorpay Checkout</div>
-                    <div className="text-[10px] text-slate-400">UPI, Cards, NetBanking</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMode('demo')}
-                  className={`p-3 rounded-2xl border text-left flex items-start gap-2.5 transition-all ${
-                    paymentMode === 'demo'
-                      ? 'bg-amber-500/10 border-amber-500/40 text-white shadow-sm'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <Sparkles className={`w-4 h-4 mt-0.5 shrink-0 ${paymentMode === 'demo' ? 'text-amber-400' : 'text-slate-500'}`} />
-                  <div>
-                    <div className="text-xs font-bold">Demo Token</div>
-                    <div className="text-[10px] text-slate-400">Offline simulation</div>
-                  </div>
-                </button>
+            {/* Payment Method Banner */}
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-white">Razorpay Secure Checkout</div>
+                  <div className="text-[10px] text-slate-400">Pay directly with UPI, Cards, or NetBanking</div>
+                </div>
               </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Instant
+              </span>
             </div>
 
             {/* Optional Personal Message */}
@@ -506,12 +464,8 @@ const SendGiftModal = ({
               {/* Payment Gateway */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 text-xs">
                 <span className="text-slate-400">Payment Gateway:</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  paymentMode === 'razorpay'
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                }`}>
-                  {paymentMode === 'razorpay' ? 'Razorpay (Orders & Checkout)' : 'Simulated Demo Token'}
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Razorpay Secure Checkout
                 </span>
               </div>
 
@@ -532,14 +486,12 @@ const SendGiftModal = ({
               </span>
             </div>
 
-            {paymentMode === 'razorpay' && (
-              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2.5 text-emerald-300 text-xs">
-                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>
-                  Razorpay Checkout will open securely in a modal with UPI, Cards, and NetBanking test options.
-                </span>
-              </div>
-            )}
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2.5 text-emerald-300 text-xs">
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>
+                Razorpay Checkout will open securely in a modal with UPI, Cards, and NetBanking test options.
+              </span>
+            </div>
 
             {/* Actions */}
             <div className="flex items-center justify-between gap-3 pt-2">
@@ -564,15 +516,10 @@ const SendGiftModal = ({
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Connecting to Razorpay...</span>
                   </>
-                ) : paymentMode === 'razorpay' ? (
+                ) : (
                   <>
                     <span>Proceed to Razorpay Checkout</span>
                     <ArrowRight className="w-4 h-4" />
-                  </>
-                ) : (
-                  <>
-                    <span>Confirm Demo Gift</span>
-                    <CheckCircle2 className="w-4 h-4" />
                   </>
                 )}
               </button>

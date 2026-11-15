@@ -158,6 +158,7 @@ const SubscriptionPage = () => {
         prefill: {
           name: user?.name || '',
           email: user?.email || '',
+          contact: user?.phone || '',
         },
         theme: {
           color: planKey === 'yearly' ? '#9333ea' : '#10b981',

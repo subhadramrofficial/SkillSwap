@@ -5,32 +5,29 @@ const GiftTransaction = require('../models/GiftTransaction');
 const Notification = require('../models/Notification');
 
 /**
- * Helper to notify a user if Notification model and exchange fields are available
+/**
+ * Helper to notify a user safely with idempotency check
  */
-const sendNotificationSafely = async ({ recipient, sender, exchangeId, title, message, type = 'exchange_completed' }) => {
+const sendNotificationSafely = async ({ recipient, sender, exchangeId, giftId, title, message, link = '/gift-money', type = 'coffee_gift' }) => {
   try {
-    if (Notification && recipient && sender && exchangeId) {
-      await Notification.create({
-        recipient,
-        sender,
-        type,
-        exchange: exchangeId,
-        title,
-        message,
-        isRead: false,
-      });
+    if (!recipient || !sender) return;
+
+    if (giftId) {
+      const exists = await Notification.findOne({ gift: giftId, type: 'coffee_gift' });
+      if (exists) return exists;
     }
 
-    // Broadcast real-time user alert via Socket.IO if available
-    try {
-      const { getIO } = require('../config/socket');
-      const io = getIO();
-      if (io && recipient) {
-        io.to(`user:${recipient.toString()}`).emit('user_alert', { title, message });
-      }
-    } catch (_) {
-      // Socket not initialized or not in request context
-    }
+    const notificationService = require('../services/notificationService');
+    return await notificationService.createNotification({
+      recipient,
+      sender,
+      type,
+      title,
+      message,
+      link,
+      exchangeId: exchangeId || null,
+      giftId: giftId || null,
+    });
   } catch (err) {
     console.warn('[Webhook Notification Warning]:', err.message);
   }
@@ -145,7 +142,7 @@ const handleRazorpayWebhook = async (req, res) => {
 
           await giftRecord.save();
 
-          // Send notification to recipient
+          // Send notification to recipient safely without duplicates
           const senderUser = await User.findById(giftRecord.sender).select('name');
           const senderName = senderUser?.name || 'A learning partner';
 
@@ -153,9 +150,11 @@ const handleRazorpayWebhook = async (req, res) => {
             recipient: giftRecord.recipient,
             sender: giftRecord.sender,
             exchangeId: giftRecord.exchange,
+            giftId: giftRecord._id,
             title: '☕ Coffee Gift Received!',
-            message: `${senderName} gifted you ₹${giftRecord.amount} for your skill exchange!`,
-            type: 'exchange_completed',
+            message: `${senderName} sent you a coffee! ☕`,
+            link: '/gift-money',
+            type: 'coffee_gift',
           });
         }
         break;
@@ -186,6 +185,20 @@ const handleRazorpayWebhook = async (req, res) => {
             giftRecord.isDemo = false;
             giftRecord.payoutStatus = 'escrow_credited';
             await giftRecord.save();
+
+            const senderUser = await User.findById(giftRecord.sender).select('name');
+            const senderName = senderUser?.name || 'A learning partner';
+
+            await sendNotificationSafely({
+              recipient: giftRecord.recipient,
+              sender: giftRecord.sender,
+              exchangeId: giftRecord.exchange,
+              giftId: giftRecord._id,
+              title: '☕ Coffee Gift Received!',
+              message: `${senderName} sent you a coffee! ☕`,
+              link: '/gift-money',
+              type: 'coffee_gift',
+            });
           }
         }
         break;

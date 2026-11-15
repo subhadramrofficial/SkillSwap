@@ -345,7 +345,7 @@ const ExchangeManagementPage = () => {
         />
       )}
 
-      {/* Send Gift (Buy Coffee Demo) Modal */}
+      {/* Send Gift (Send a Coffee) Modal */}
       {giftModalExchange && (
         <SendGiftModal
           isOpen={!!giftModalExchange}

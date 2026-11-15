@@ -15,29 +15,29 @@ const generateTransactionId = (prefix = 'TXN-RZP') => {
 };
 
 /**
- * Helper to notify a recipient safely without crashing if exchange fields are not present
+ * Helper to notify a recipient safely with idempotency check
  */
-const sendGiftNotificationSafely = async ({ recipient, sender, exchangeId, title, message }) => {
+const sendGiftNotificationSafely = async ({ recipient, sender, giftId, exchangeId, title, message, link = '/gift-money' }) => {
   try {
-    if (recipient && sender && exchangeId) {
-      await Notification.create({
-        recipient,
-        sender,
-        type: 'exchange_completed',
-        exchange: exchangeId,
-        title,
-        message,
-        isRead: false,
-      });
+    if (!recipient || !sender) return;
+
+    // Check duplicate notification for this gift
+    if (giftId) {
+      const exists = await Notification.findOne({ gift: giftId, type: 'coffee_gift' });
+      if (exists) return exists;
     }
 
-    try {
-      const { getIO } = require('../config/socket');
-      const io = getIO();
-      if (io && recipient) {
-        io.to(`user:${recipient.toString()}`).emit('user_alert', { title, message });
-      }
-    } catch (_) {}
+    const notificationService = require('../services/notificationService');
+    return await notificationService.createNotification({
+      recipient,
+      sender,
+      type: 'coffee_gift',
+      title: title || '☕ Coffee Gift Received!',
+      message: message || 'You received a coffee gift!',
+      link,
+      exchangeId: exchangeId || null,
+      giftId: giftId || null,
+    });
   } catch (err) {
     // Non-blocking log
     console.warn('[Gift Notification Warning]:', err.message);
@@ -319,13 +319,15 @@ const verifyGiftPayment = async (req, res, next) => {
     await gift.save();
 
     // 6. Notify recipient safely
-    const senderName = gift.sender?.name || req.user.name || 'A partner';
+    const senderName = gift.sender?.name || req.user.name || 'A learning partner';
     await sendGiftNotificationSafely({
       recipient: gift.recipient._id,
       sender: gift.sender._id,
+      giftId: gift._id,
       exchangeId: gift.exchange,
       title: '☕ Coffee Gift Received!',
-      message: `${senderName} sent you a ₹${gift.amount} coffee gift on SkillSwap!`,
+      message: `${senderName} sent you a coffee! ☕`,
+      link: '/gift-money',
     });
 
     return successResponse(res, 200, 'Coffee gift payment verified and completed successfully!', gift);
@@ -415,12 +417,14 @@ const sendGift = async (req, res, next) => {
     await sendGiftNotificationSafely({
       recipient: recipientUser._id,
       sender: userId,
+      giftId: giftRecord._id,
       exchangeId: exchangeRecord?._id,
-      title: '☕ Demo Coffee Gift Received!',
-      message: `${req.user.name} gifted you ₹${parsedAmount} (Demo Token)!`,
+      title: '☕ Coffee Gift Received!',
+      message: `${req.user.name} sent you a coffee! ☕`,
+      link: '/gift-money',
     });
 
-    return successResponse(res, 201, `Demo coffee gift of ₹${parsedAmount} sent successfully!`, populatedGift);
+    return successResponse(res, 201, `Coffee gift of ₹${parsedAmount} sent successfully!`, populatedGift);
   } catch (error) {
     if (error.statusCode) {
       return errorResponse(res, error.statusCode, error.message);

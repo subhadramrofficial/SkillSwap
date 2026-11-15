@@ -24,7 +24,7 @@ import {
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => {
   const { user, isAdmin, logout } = useAuth();
-  const { exchangeUnreadCount, chatUnreadCount } = useNotifications();
+  const { exchangeUnreadCount, chatUnreadCount, matchUnreadCount, giftUnreadCount } = useNotifications();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -59,7 +59,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => 
     { name: 'Exchanges', path: '/exchanges', icon: ArrowLeftRight },
     { name: 'Chat', path: '/messages', icon: MessageSquare },
     { name: 'Subscription', path: '/subscription', icon: CreditCard },
-    { name: 'Gift Demo', path: '/gift-money', icon: Coffee },
+    { name: 'Send a Coffee', path: '/gift-money', icon: Coffee },
     { name: 'User Profile', path: '/profile', icon: User },
   ];
 
@@ -80,6 +80,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, setMobileOpen }) => 
     if (isAdmin) return 0;
     if (path === '/exchanges') return exchangeUnreadCount;
     if (path === '/messages') return chatUnreadCount;
+    if (path === '/find-partners') return matchUnreadCount || 0;
+    if (path === '/gift-money') return giftUnreadCount || 0;
     return 0;
   };
 

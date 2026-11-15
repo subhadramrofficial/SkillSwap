@@ -10,22 +10,47 @@ import {
   Sparkles,
   ChevronDown,
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  Bell,
+  Coffee,
+  ArrowLeftRight,
+  Check
 } from 'lucide-react';
+import { useNotifications } from '../../context/NotificationContext';
 
 const Header = ({ onOpenMobileMenu }) => {
   const { user, isAdmin, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
+  const {
+    totalNotificationsCount,
+    exchangeUnreadCount,
+    matchUnreadCount,
+    giftUnreadCount,
+    notifications,
+    loadingNotifications,
+    markAllAsRead,
+    markSingleAsRead,
+    fetchNotifications,
+  } = useNotifications();
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+
+  const totalUnread = totalNotificationsCount || (exchangeUnreadCount + matchUnreadCount + giftUnreadCount);
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
       }
     };
 
@@ -41,6 +66,18 @@ const Header = ({ onOpenMobileMenu }) => {
     navigate(isAdmin ? '/admin/login' : '/login');
   };
 
+  const formatTimeAgo = (date) => {
+    if (!date) return '';
+    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
   // Determine current page title and breadcrumb based on route
   const getPageInfo = () => {
     const path = location.pathname;
@@ -52,7 +89,7 @@ const Header = ({ onOpenMobileMenu }) => {
     if (path === '/my-skills') return { title: 'My Skills', section: 'Skills Management' };
     if (path.startsWith('/exchanges')) return { title: 'Skill Exchanges', section: 'Collaborations' };
     if (path === '/messages') return { title: 'Messages & Chat', section: 'Live Collaboration' };
-    if (path === '/gift-money') return { title: 'Simulated Gift Demo', section: 'Demonstration' };
+    if (path === '/gift-money') return { title: 'Send a Coffee', section: 'Coffee Gifting' };
     if (path === '/profile/edit') return { title: 'Edit Profile', section: 'Account Settings' };
     if (path.startsWith('/profile')) return { title: 'User Profile', section: 'Profile' };
     if (path === '/admin' || path === '/admin/dashboard') return { title: 'Platform Dashboard', section: 'Administration' };
@@ -105,6 +142,151 @@ const Header = ({ onOpenMobileMenu }) => {
             <span>P2P Network</span>
           </div>
         )}
+
+        {/* Notification Bell Dropdown */}
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setNotifOpen(!notifOpen);
+              if (!notifOpen) {
+                fetchNotifications();
+              }
+            }}
+            className="relative p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors focus:outline-none"
+            aria-label="Notifications"
+            aria-expanded={notifOpen}
+          >
+            <Bell className="w-5 h-5" />
+            {totalUnread > 0 && (
+              <span className="absolute top-1.5 right-1.5 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-slate-950 shadow-sm animate-pulse">
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">Notifications</span>
+                  {totalUnread > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                      {totalUnread} new
+                    </span>
+                  )}
+                </div>
+                {totalUnread > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllAsRead}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 transition-colors"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {/* Notification List */}
+              <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
+                {loadingNotifications ? (
+                  <div className="p-6 text-center text-xs text-slate-400">Loading notifications...</div>
+                ) : notifications.length === 0 ? (
+                  <div className="p-8 text-center space-y-2">
+                    <p className="text-2xl">✨</p>
+                    <p className="text-xs font-semibold text-slate-300">No notifications yet</p>
+                    <p className="text-[11px] text-slate-500">You're all caught up with your exchanges, matches, and gifts!</p>
+                  </div>
+                ) : (
+                  notifications.map((item) => {
+                    const isNewMatch = item.type === 'new_match';
+                    const isCoffeeGift = item.type === 'coffee_gift';
+                    const targetLink = item.link || (isNewMatch ? '/find-partners' : isCoffeeGift ? '/gift-money' : '/exchanges');
+
+                    return (
+                      <div
+                        key={item._id}
+                        onClick={() => {
+                          markSingleAsRead(item._id);
+                          setNotifOpen(false);
+                          navigate(targetLink);
+                        }}
+                        className={`p-3.5 hover:bg-slate-800/60 cursor-pointer transition-colors flex items-start gap-3 ${
+                          !item.isRead ? 'bg-slate-800/30' : ''
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                            isNewMatch
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : isCoffeeGift
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                          }`}
+                        >
+                          {isNewMatch ? (
+                            <Sparkles className="w-4 h-4" />
+                          ) : isCoffeeGift ? (
+                            <Coffee className="w-4 h-4" />
+                          ) : (
+                            <ArrowLeftRight className="w-4 h-4" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-bold text-white truncate">
+                              {item.title || (isNewMatch ? 'New Match!' : isCoffeeGift ? 'Coffee Gift!' : 'Exchange Update')}
+                            </p>
+                            <span className="text-[10px] text-slate-400 shrink-0">
+                              {formatTimeAgo(item.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        {!item.isRead && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-2" />
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-2.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-around text-xs text-slate-400">
+                <Link
+                  to="/find-partners"
+                  onClick={() => setNotifOpen(false)}
+                  className="hover:text-emerald-400 transition-colors"
+                >
+                  Find Partners
+                </Link>
+                <span>•</span>
+                <Link
+                  to="/gift-money"
+                  onClick={() => setNotifOpen(false)}
+                  className="hover:text-amber-400 transition-colors"
+                >
+                  Send a Coffee
+                </Link>
+                <span>•</span>
+                <Link
+                  to="/exchanges"
+                  onClick={() => setNotifOpen(false)}
+                  className="hover:text-sky-400 transition-colors"
+                >
+                  Exchanges
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* User Profile Avatar with Dropdown */}
         <div className="relative" ref={dropdownRef}>

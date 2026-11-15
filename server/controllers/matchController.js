@@ -11,6 +11,11 @@ const getSuggestions = async (req, res, next) => {
   try {
     const suggestions = await matchingService.getSuggestions(req.user._id, req.query);
 
+    // Notify users about newly established mutual matches without creating duplicate notifications on reloads
+    matchingService.checkAndNotifyNewMatches(req.user._id).catch((err) => {
+      console.warn('[Match Notification Non-blocking Error]:', err.message);
+    });
+
     return successResponse(res, 200, 'Partner suggestions retrieved successfully', {
       suggestions,
       total: suggestions.length,

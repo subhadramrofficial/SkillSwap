@@ -26,7 +26,7 @@ const Footer = () => {
             <ul className="space-y-2 text-xs">
               <li><Link to="/skills" className="hover:text-emerald-400 transition-colors">Explore All Skills</Link></li>
               <li><Link to="/find-partners" className="hover:text-emerald-400 transition-colors">Partner Discovery</Link></li>
-              <li><Link to="/gift-money" className="hover:text-emerald-400 transition-colors">Gift Money (Demo)</Link></li>
+              <li><Link to="/gift-money" className="hover:text-emerald-400 transition-colors">Send a Coffee</Link></li>
             </ul>
           </div>
 
@@ -36,17 +36,17 @@ const Footer = () => {
             <ul className="space-y-2 text-xs">
               <li className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Free Peer Exchange</li>
               <li className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5 text-sky-400" /> Age-Verified Safety (15+)</li>
-              <li className="flex items-center gap-1.5"><Coffee className="w-3.5 h-3.5 text-amber-400" /> Simulated Gift Money</li>
+              <li className="flex items-center gap-1.5"><Coffee className="w-3.5 h-3.5 text-amber-400" /> Send a Coffee</li>
             </ul>
           </div>
 
-          {/* Demonstration Notice */}
+          {/* Gifting Notice */}
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2">
             <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              Demo Project
+              Coffee Gifting
             </span>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              SkillSwap is an educational platform. The Gift Money feature is strictly simulated for demonstration purposes and never processes real currency.
+              SkillSwap enables members to express gratitude by gifting coffee to learning mentors via secure Razorpay checkout.
             </p>
           </div>
         </div>

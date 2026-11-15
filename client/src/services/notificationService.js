@@ -16,6 +16,14 @@ export const notificationService = {
   getNotifications: async () => {
     return await api.get('/notifications');
   },
+
+  markAllAsRead: async () => {
+    return await api.patch('/notifications/read-all');
+  },
+
+  markNotificationAsRead: async (notificationId) => {
+    return await api.patch(`/notifications/${notificationId}/read`);
+  },
 };
 
 export default notificationService;

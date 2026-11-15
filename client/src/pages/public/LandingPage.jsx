@@ -70,8 +70,8 @@ const LandingPage = () => {
               <p className="text-xs text-slate-400 font-medium">Reciprocal Matching</p>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/80 backdrop-blur-sm">
-              <p className="text-2xl font-bold text-amber-400">Demo Coffee</p>
-              <p className="text-xs text-slate-400 font-medium">Simulated Gifting</p>
+              <p className="text-2xl font-bold text-amber-400">Send a Coffee</p>
+              <p className="text-xs text-slate-400 font-medium">Partner Appreciation</p>
             </div>
           </div>
         </div>
@@ -143,7 +143,7 @@ const LandingPage = () => {
                 </li>
                 <li className="flex items-start gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span><strong>Simulated Gift Money:</strong> Show gratitude by buying a partner a simulated coffee without any real monetary cost.</span>
+                  <span><strong>Coffee Gifting:</strong> Show gratitude by buying your learning partner a coffee via Razorpay.</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />

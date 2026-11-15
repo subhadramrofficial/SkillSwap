@@ -1,6 +1,7 @@
 const SkillListing = require('../models/SkillListing');
 const SkillCategory = require('../models/SkillCategory');
 const User = require('../models/User');
+const matchingService = require('../services/matchingService');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
 
 /**
@@ -292,6 +293,9 @@ const createSkill = async (req, res, next) => {
     const populated = await SkillListing.findById(listing._id)
       .populate('category', 'name slug icon')
       .populate('owner', 'name profileImage bio availability');
+
+    // Asynchronously check and notify users of new matches
+    matchingService.checkAndNotifyNewMatches(req.user._id).catch(() => {});
 
     return successResponse(res, 201, 'Skill listing created successfully', populated);
   } catch (error) {
