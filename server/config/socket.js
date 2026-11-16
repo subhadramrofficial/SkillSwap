@@ -368,6 +368,32 @@ const initSocket = (httpServer) => {
     });
 
     /**
+     * Mark match notifications as read by the current user
+     */
+    socket.on('mark_matches_read', async (callback) => {
+      try {
+        const res = await notificationService.markMatchNotificationsRead(socket.user._id);
+        if (callback) callback({ success: true, ...res });
+      } catch (err) {
+        console.error('[Socket mark_matches_read Error]', err.message);
+        if (callback) callback({ success: false, message: err.message });
+      }
+    });
+
+    /**
+     * Mark coffee gift notifications as read by the current user
+     */
+    socket.on('mark_gifts_read', async (callback) => {
+      try {
+        const res = await notificationService.markGiftNotificationsRead(socket.user._id);
+        if (callback) callback({ success: true, ...res });
+      } catch (err) {
+        console.error('[Socket mark_gifts_read Error]', err.message);
+        if (callback) callback({ success: false, message: err.message });
+      }
+    });
+
+    /**
      * Real-time typing indicators
      */
     socket.on('typing', ({ exchangeId, conversationId }) => {

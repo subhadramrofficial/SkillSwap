@@ -17,15 +17,26 @@ import {
   Search,
   X,
   Filter,
-  CreditCard
+  CreditCard,
+  CheckCheck,
+  Trash2,
+  Bell
 } from 'lucide-react';
 import skillService from '../../services/skillService';
 import subscriptionService from '../../services/subscriptionService';
 import { useNotifications } from '../../context/NotificationContext';
+import { resolveNotificationCategory } from '../../services/notificationService';
 import ExchangeRequestModal from '../../components/exchanges/ExchangeRequestModal';
 
 const PartnerDiscoveryPage = () => {
-  const { markMatchesAsRead, refreshBadges } = useNotifications();
+  const {
+    notifications,
+    matchUnreadCount,
+    markMatchesAsRead,
+    markSingleAsRead,
+    deleteNotification,
+    refreshBadges,
+  } = useNotifications();
   const [suggestions, setSuggestions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [stats, setStats] = useState({ total: 0, mutualCount: 0, complementaryCount: 0 });
@@ -61,9 +72,6 @@ const PartnerDiscoveryPage = () => {
           mutualCount: data.mutualCount ?? list.filter((s) => s.matchType === 'mutual').length,
           complementaryCount: data.complementaryCount ?? list.filter((s) => s.matchType === 'complementary').length,
         });
-        // Suggestions have been generated/fetched on backend; mark match notifications read and refresh badges
-        markMatchesAsRead();
-        refreshBadges();
       } else if (matchRes.status === 'rejected') {
         setError(matchRes.reason?.message || 'Unable to fetch match suggestions.');
       }
@@ -84,8 +92,7 @@ const PartnerDiscoveryPage = () => {
 
   useEffect(() => {
     fetchMatches();
-    markMatchesAsRead();
-  }, [markMatchesAsRead]);
+  }, []);
 
   const handlePropose = (partnerUser, skillToLearn) => {
     setActivePartner(partnerUser);
@@ -131,6 +138,11 @@ const PartnerDiscoveryPage = () => {
     return nameMatch || teachMatch || wantMatch;
   });
 
+  const matchNotifications = notifications.filter(
+    (n) => resolveNotificationCategory(n) === 'matches'
+  );
+  const unreadMatchNotifications = matchNotifications.filter((n) => !n.isRead);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
       {/* Page Header */}
@@ -166,6 +178,92 @@ const PartnerDiscoveryPage = () => {
           </Link>
         </div>
       </div>
+
+      {/* Mutual Match Alerts Section */}
+      {matchNotifications.length > 0 && (
+        <div className="p-5 rounded-3xl bg-slate-900 border border-emerald-500/30 shadow-xl space-y-4 animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-white text-base">Mutual Match Alerts</h3>
+                  {unreadMatchNotifications.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-xs font-black shadow-sm">
+                      {unreadMatchNotifications.length > 99 ? '99+' : unreadMatchNotifications.length} unread
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Notifications for mutual skill matches. Connecting here keeps exchanges organized.
+                </p>
+              </div>
+            </div>
+
+            {unreadMatchNotifications.length > 0 && (
+              <button
+                type="button"
+                onClick={markMatchesAsRead}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition-colors self-start sm:self-auto"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>Mark all matches read</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {matchNotifications.map((notif) => (
+              <div
+                key={notif._id}
+                className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
+                  !notif.isRead
+                    ? 'bg-slate-800/80 border-emerald-500/40 shadow-md'
+                    : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                }`}
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{notif.title}</p>
+                    <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{notif.message}</p>
+                    {notif.sender?.name && (
+                      <p className="text-[11px] text-emerald-400 font-medium mt-1">
+                        Partner: {notif.sender.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!notif.isRead && (
+                    <button
+                      type="button"
+                      onClick={() => markSingleAsRead(notif._id)}
+                      title="Mark as read"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteNotification(notif._id)}
+                    title="Delete notification"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Free limit reached alert banner */}
       {usage?.hasReachedLimit && !usage?.hasActiveSubscription && (

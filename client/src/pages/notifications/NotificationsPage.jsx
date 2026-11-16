@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../context/NotificationContext';
+import { resolveNotificationCategory } from '../../services/notificationService';
 import {
   Bell,
   CheckCheck,
@@ -44,11 +45,7 @@ const NotificationsPage = () => {
   };
 
   const getCategory = (notif) => {
-    if (notif.category) return notif.category;
-    if (notif.type === 'coffee_gift') return 'gifts';
-    if (notif.type === 'new_match') return 'matches';
-    if (notif.type && notif.type.startsWith('exchange_')) return 'exchanges';
-    return 'system';
+    return resolveNotificationCategory(notif);
   };
 
   const filteredNotifications = notifications.filter((notif) => {

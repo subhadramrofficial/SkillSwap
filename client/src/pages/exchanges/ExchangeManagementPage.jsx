@@ -23,12 +23,8 @@ import {
 
 const ExchangeManagementPage = () => {
   const { user } = useAuth();
-  const { markExchangesAsRead } = useNotifications();
+  const { exchangeUnreadCount, markExchangesAsRead } = useNotifications();
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'incoming' | 'outgoing' | 'history'
-
-  useEffect(() => {
-    markExchangesAsRead();
-  }, [markExchangesAsRead]);
   const [exchanges, setExchanges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -175,13 +171,25 @@ const ExchangeManagementPage = () => {
           </p>
         </div>
 
-        <Link
-          to="/find-partners"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-500/20"
-        >
-          <Users className="w-4 h-4" />
-          Discover Partners
-        </Link>
+        <div className="flex items-center gap-3">
+          {exchangeUnreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markExchangesAsRead}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-xs font-semibold transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Mark alerts read ({exchangeUnreadCount})</span>
+            </button>
+          )}
+          <Link
+            to="/find-partners"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-500/20"
+          >
+            <Users className="w-4 h-4" />
+            <span>Discover Partners</span>
+          </Link>
+        </div>
       </div>
 
       {/* Global Alerts */}

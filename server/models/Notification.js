@@ -86,6 +86,23 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
+// Automatically ensure consistent category, type, and link
+notificationSchema.pre('save', function (next) {
+  if (this.type === 'coffee_gift' || (this.title && /coffee/i.test(this.title))) {
+    this.category = 'gifts';
+    this.type = 'coffee_gift';
+    if (!this.link) this.link = '/gift-money';
+  } else if (this.type === 'new_match' || (this.title && /match/i.test(this.title))) {
+    this.category = 'matches';
+    this.type = 'new_match';
+    if (!this.link) this.link = '/find-partners';
+  } else if (this.type && this.type.startsWith('exchange_')) {
+    this.category = 'exchanges';
+    if (!this.link) this.link = '/exchanges';
+  }
+  next();
+});
+
 // High performance compound indexes
 notificationSchema.index({ recipient: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ recipient: 1, sender: 1, type: 1 });

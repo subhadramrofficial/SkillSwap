@@ -65,21 +65,74 @@ const markSingleNotificationAsRead = async (req, res, next) => {
  */
 const getNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ recipient: req.user._id })
+    const { category, isRead, unreadOnly } = req.query;
+    const filter = { recipient: req.user._id };
+
+    if (unreadOnly === 'true' || isRead === 'false' || isRead === false) {
+      filter.isRead = false;
+    } else if (isRead === 'true' || isRead === true) {
+      filter.isRead = true;
+    }
+
+    if (category) {
+      if (category === 'gifts') {
+        filter.$or = [
+          { category: 'gifts' },
+          { type: 'coffee_gift' },
+          { title: { $regex: /coffee/i } },
+        ];
+      } else if (category === 'matches') {
+        filter.$or = [
+          { category: 'matches' },
+          { type: 'new_match' },
+          { title: { $regex: /match/i } },
+        ];
+      } else if (category === 'exchanges') {
+        filter.$and = [
+          {
+            $or: [
+              { category: 'exchanges' },
+              {
+                type: {
+                  $in: [
+                    'exchange_request',
+                    'exchange_accepted',
+                    'exchange_rejected',
+                    'exchange_cancelled',
+                    'exchange_completed',
+                  ],
+                },
+              },
+            ],
+          },
+          { title: { $not: /coffee/i } },
+          { type: { $ne: 'coffee_gift' } },
+        ];
+      } else {
+        filter.category = category;
+      }
+    }
+
+    const notifications = await Notification.find(filter)
       .populate('sender', 'name profileImage')
       .populate('exchange')
       .populate('gift')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(parseInt(req.query.limit, 10) || 50);
 
     const unreadCount = await Notification.countDocuments({
       recipient: req.user._id,
       isRead: false,
     });
 
+    const categoryUnreadCount = category
+      ? await Notification.countDocuments({ ...filter, isRead: false })
+      : unreadCount;
+
     return successResponse(res, 200, 'Notifications retrieved', {
       notifications,
       unreadCount,
+      categoryUnreadCount,
       total: notifications.length,
     });
   } catch (error) {

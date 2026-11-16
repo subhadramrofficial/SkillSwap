@@ -18,6 +18,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
+import { resolveNotificationCategory } from '../../services/notificationService';
 
 const Header = ({ onOpenMobileMenu }) => {
   const { user, isAdmin, logout } = useAuth();
@@ -205,7 +206,7 @@ const Header = ({ onOpenMobileMenu }) => {
                   </div>
                 ) : (
                   notifications.map((item) => {
-                    const cat = item.category || (item.type === 'coffee_gift' ? 'gifts' : item.type === 'new_match' ? 'matches' : 'exchanges');
+                    const cat = resolveNotificationCategory(item);
                     const isNewMatch = cat === 'matches';
                     const isCoffeeGift = cat === 'gifts';
                     const targetLink = item.link || (isNewMatch ? '/find-partners' : isCoffeeGift ? '/gift-money' : '/exchanges');

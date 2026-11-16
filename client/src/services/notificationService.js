@@ -1,5 +1,32 @@
 import api from './api';
 
+export const resolveNotificationCategory = (notif) => {
+  if (!notif) return 'system';
+  if (
+    notif.category === 'gifts' ||
+    notif.type === 'coffee_gift' ||
+    notif.gift ||
+    (typeof notif.title === 'string' && /coffee|gift/i.test(notif.title))
+  ) {
+    return 'gifts';
+  }
+  if (
+    notif.category === 'matches' ||
+    notif.type === 'new_match' ||
+    (typeof notif.title === 'string' && /match/i.test(notif.title))
+  ) {
+    return 'matches';
+  }
+  if (
+    notif.category === 'exchanges' ||
+    (typeof notif.type === 'string' && notif.type.startsWith('exchange_')) ||
+    notif.exchange
+  ) {
+    return 'exchanges';
+  }
+  return notif.category || 'system';
+};
+
 export const notificationService = {
   getBadgeCounts: async () => {
     return await api.get('/notifications/badges');
@@ -21,8 +48,8 @@ export const notificationService = {
     return await api.patch(`/conversations/${conversationId}/read`);
   },
 
-  getNotifications: async () => {
-    return await api.get('/notifications');
+  getNotifications: async (params = {}) => {
+    return await api.get('/notifications', { params });
   },
 
   markAllAsRead: async () => {

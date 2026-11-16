@@ -173,26 +173,45 @@ class NotificationService {
     const [unreadExchanges, unreadMatches, unreadGifts, totalUnreadNotifications] = await Promise.all([
       Notification.countDocuments({
         recipient: userObjectId,
-        type: {
-          $in: [
-            'exchange_request',
-            'exchange_accepted',
-            'exchange_rejected',
-            'exchange_cancelled',
-            'exchange_completed',
-          ],
-        },
         isRead: false,
+        $and: [
+          {
+            $or: [
+              { category: 'exchanges' },
+              {
+                type: {
+                  $in: [
+                    'exchange_request',
+                    'exchange_accepted',
+                    'exchange_rejected',
+                    'exchange_cancelled',
+                    'exchange_completed',
+                  ],
+                },
+              },
+            ],
+          },
+          { title: { $not: /coffee/i } },
+          { type: { $ne: 'coffee_gift' } },
+        ],
       }),
       Notification.countDocuments({
         recipient: userObjectId,
-        type: 'new_match',
         isRead: false,
+        $or: [
+          { category: 'matches' },
+          { type: 'new_match' },
+          { title: /match/i },
+        ],
       }),
       Notification.countDocuments({
         recipient: userObjectId,
-        type: 'coffee_gift',
         isRead: false,
+        $or: [
+          { category: 'gifts' },
+          { type: 'coffee_gift' },
+          { title: /coffee/i },
+        ],
       }),
       Notification.countDocuments({
         recipient: userObjectId,
@@ -258,16 +277,27 @@ class NotificationService {
     await Notification.updateMany(
       {
         recipient: userObjectId,
-        type: {
-          $in: [
-            'exchange_request',
-            'exchange_accepted',
-            'exchange_rejected',
-            'exchange_cancelled',
-            'exchange_completed',
-          ],
-        },
         isRead: false,
+        $and: [
+          {
+            $or: [
+              { category: 'exchanges' },
+              {
+                type: {
+                  $in: [
+                    'exchange_request',
+                    'exchange_accepted',
+                    'exchange_rejected',
+                    'exchange_cancelled',
+                    'exchange_completed',
+                  ],
+                },
+              },
+            ],
+          },
+          { title: { $not: /coffee/i } },
+          { type: { $ne: 'coffee_gift' } },
+        ],
       },
       {
         $set: {
@@ -374,8 +404,12 @@ class NotificationService {
     await Notification.updateMany(
       {
         recipient: userObjectId,
-        type: 'new_match',
         isRead: false,
+        $or: [
+          { category: 'matches' },
+          { type: 'new_match' },
+          { title: /match/i },
+        ],
       },
       {
         $set: {
@@ -416,8 +450,12 @@ class NotificationService {
     await Notification.updateMany(
       {
         recipient: userObjectId,
-        type: 'coffee_gift',
         isRead: false,
+        $or: [
+          { category: 'gifts' },
+          { type: 'coffee_gift' },
+          { title: /coffee/i },
+        ],
       },
       {
         $set: {
