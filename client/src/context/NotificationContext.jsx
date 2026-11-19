@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 import notificationService, { resolveNotificationCategory } from '../services/notificationService';
@@ -9,6 +9,9 @@ export const NotificationProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const { socket, isConnected } = useSocket();
 
+  // Track deleted notification IDs in the current session to prevent resurrection
+  const deletedIdsRef = useRef(new Set());
+
   const [exchangeUnreadCount, setExchangeUnreadCount] = useState(0);
   const [matchUnreadCount, setMatchUnreadCount] = useState(0);
   const [giftUnreadCount, setGiftUnreadCount] = useState(0);
@@ -17,6 +20,13 @@ export const NotificationProvider = ({ children }) => {
   const [conversationUnreadMap, setConversationUnreadMap] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  // Clear deleted IDs tracking when authentication state changes or user switches
+  useEffect(() => {
+    if (!isAuthenticated) {
+      deletedIdsRef.current.clear();
+    }
+  }, [isAuthenticated, user?._id]);
 
   // Unified total unread notification count
   const totalUnread = totalNotificationsCount || (exchangeUnreadCount + matchUnreadCount + giftUnreadCount);
@@ -61,7 +71,9 @@ export const NotificationProvider = ({ children }) => {
         } else if (Array.isArray(res.data.notifications)) {
           list = res.data.notifications;
         }
-        setNotifications(list);
+        // Exclude any notifications deleted in the current session
+        const filteredList = list.filter((n) => !deletedIdsRef.current.has(n._id));
+        setNotifications(filteredList);
         if (typeof res.data.unreadCount === 'number') {
           setTotalNotificationsCount(res.data.unreadCount);
         }
@@ -84,7 +96,7 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    // 1. Exchanges & alert badges update event
+    // 1. Exchanges & alert badges update event (pure count synchronization)
     const handleExchangeBadgeUpdate = (data) => {
       if (typeof data?.count === 'number') {
         setTotalNotificationsCount(data.count);
@@ -102,23 +114,23 @@ export const NotificationProvider = ({ children }) => {
         if (typeof data?.matches === 'number') setMatchUnreadCount(data.matches);
         if (typeof data?.gifts === 'number') setGiftUnreadCount(data.gifts);
         if (typeof data?.totalUnread === 'number') setTotalNotificationsCount(data.totalUnread);
-        fetchBadgeCounts();
       }
 
+      // If a specific new notification payload is included, prepend it unless already deleted
       if (data?.notification && data.notification._id) {
-        setNotifications((prev) => {
-          const exists = prev.some((n) => n._id === data.notification._id);
-          if (exists) return prev;
-          return [data.notification, ...prev];
-        });
-      } else {
-        fetchNotifications();
+        if (!deletedIdsRef.current.has(data.notification._id)) {
+          setNotifications((prev) => {
+            const exists = prev.some((n) => n._id === data.notification._id);
+            if (exists) return prev;
+            return [data.notification, ...prev];
+          });
+        }
       }
     };
 
     // 2. Direct new_notification event
     const handleNewNotification = (newNotif) => {
-      if (newNotif && newNotif._id) {
+      if (newNotif && newNotif._id && !deletedIdsRef.current.has(newNotif._id)) {
         setNotifications((prev) => {
           const exists = prev.some((n) => n._id === newNotif._id);
           if (exists) return prev;
@@ -140,7 +152,6 @@ export const NotificationProvider = ({ children }) => {
     // 3. Direct user alert event
     const handleUserAlert = () => {
       fetchBadgeCounts();
-      fetchNotifications();
     };
 
     // 4. Chat badge update event
@@ -158,7 +169,20 @@ export const NotificationProvider = ({ children }) => {
       }
     };
 
-    // 5. Re-synchronize on socket reconnect
+    // 5. Remote notification deleted event
+    const handleNotificationDeleted = (data) => {
+      if (data?.notificationId) {
+        deletedIdsRef.current.add(data.notificationId);
+        setNotifications((prev) => prev.filter((n) => n._id !== data.notificationId));
+      }
+    };
+
+    // 6. Remote read notifications deleted event
+    const handleReadNotificationsDeleted = () => {
+      setNotifications((prev) => prev.filter((n) => !n.isRead));
+    };
+
+    // 7. Re-synchronize on socket reconnect
     const handleConnect = () => {
       fetchBadgeCounts();
       fetchNotifications();
@@ -169,6 +193,8 @@ export const NotificationProvider = ({ children }) => {
     socket.on('new_notification', handleNewNotification);
     socket.on('user_alert', handleUserAlert);
     socket.on('chat_badge_update', handleChatBadgeUpdate);
+    socket.on('notification_deleted', handleNotificationDeleted);
+    socket.on('read_notifications_deleted', handleReadNotificationsDeleted);
     socket.on('connect', handleConnect);
 
     return () => {
@@ -177,6 +203,8 @@ export const NotificationProvider = ({ children }) => {
       socket.off('new_notification', handleNewNotification);
       socket.off('user_alert', handleUserAlert);
       socket.off('chat_badge_update', handleChatBadgeUpdate);
+      socket.off('notification_deleted', handleNotificationDeleted);
+      socket.off('read_notifications_deleted', handleReadNotificationsDeleted);
       socket.off('connect', handleConnect);
     };
   }, [socket, isAuthenticated, fetchBadgeCounts, fetchNotifications]);
@@ -283,6 +311,9 @@ export const NotificationProvider = ({ children }) => {
   const deleteNotification = useCallback(async (notificationId) => {
     if (!notificationId) return;
 
+    // Immediately mark as deleted in session
+    deletedIdsRef.current.add(notificationId);
+
     setNotifications((prev) => {
       const target = prev.find((n) => n._id === notificationId);
       if (target && !target.isRead) {
@@ -304,6 +335,8 @@ export const NotificationProvider = ({ children }) => {
       fetchBadgeCounts();
     } catch (err) {
       console.warn('[Delete Notification Error]', err.message);
+      // If backend delete failed, remove from session suppression set and restore
+      deletedIdsRef.current.delete(notificationId);
       fetchNotifications();
       fetchBadgeCounts();
     }
@@ -311,7 +344,12 @@ export const NotificationProvider = ({ children }) => {
 
   // Delete all read notifications
   const deleteAllRead = useCallback(async () => {
-    setNotifications((prev) => prev.filter((n) => !n.isRead));
+    // Collect all read notification IDs and mark as deleted in session
+    setNotifications((prev) => {
+      const readIds = prev.filter((n) => n.isRead).map((n) => n._id);
+      readIds.forEach((id) => deletedIdsRef.current.add(id));
+      return prev.filter((n) => !n.isRead);
+    });
 
     try {
       await notificationService.deleteAllReadNotifications();
