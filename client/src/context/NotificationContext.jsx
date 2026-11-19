@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
-import notificationService from '../services/notificationService';
+import notificationService, { resolveNotificationCategory } from '../services/notificationService';
 
 const NotificationContext = createContext(null);
 
@@ -125,11 +125,12 @@ export const NotificationProvider = ({ children }) => {
           return [newNotif, ...prev];
         });
         setTotalNotificationsCount((prev) => prev + 1);
-        if (newNotif.type === 'new_match' || newNotif.category === 'matches') {
+        const cat = resolveNotificationCategory(newNotif);
+        if (cat === 'matches') {
           setMatchUnreadCount((prev) => prev + 1);
-        } else if (newNotif.type === 'coffee_gift' || newNotif.category === 'gifts') {
+        } else if (cat === 'gifts') {
           setGiftUnreadCount((prev) => prev + 1);
-        } else if (newNotif.type?.startsWith('exchange_') || newNotif.category === 'exchanges') {
+        } else if (cat === 'exchanges') {
           setExchangeUnreadCount((prev) => prev + 1);
         }
       }
@@ -183,6 +184,9 @@ export const NotificationProvider = ({ children }) => {
   // Mark all exchange notifications as read
   const markExchangesAsRead = useCallback(async () => {
     setExchangeUnreadCount(0);
+    setNotifications((prev) =>
+      prev.map((n) => (resolveNotificationCategory(n) === 'exchanges' ? { ...n, isRead: true } : n))
+    );
 
     if (socket && isConnected) {
       socket.emit('mark_exchanges_read');
@@ -201,7 +205,7 @@ export const NotificationProvider = ({ children }) => {
   const markMatchesAsRead = useCallback(async () => {
     setMatchUnreadCount(0);
     setNotifications((prev) =>
-      prev.map((n) => (n.type === 'new_match' || n.category === 'matches' ? { ...n, isRead: true } : n))
+      prev.map((n) => (resolveNotificationCategory(n) === 'matches' ? { ...n, isRead: true } : n))
     );
 
     try {
@@ -217,7 +221,7 @@ export const NotificationProvider = ({ children }) => {
   const markGiftsAsRead = useCallback(async () => {
     setGiftUnreadCount(0);
     setNotifications((prev) =>
-      prev.map((n) => (n.type === 'coffee_gift' || n.category === 'gifts' ? { ...n, isRead: true } : n))
+      prev.map((n) => (resolveNotificationCategory(n) === 'gifts' ? { ...n, isRead: true } : n))
     );
 
     try {
@@ -249,9 +253,22 @@ export const NotificationProvider = ({ children }) => {
   // Mark single notification as read
   const markSingleAsRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
-    setNotifications((prev) =>
-      prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n))
-    );
+
+    setNotifications((prev) => {
+      const target = prev.find((n) => n._id === notificationId);
+      if (target && !target.isRead) {
+        const cat = resolveNotificationCategory(target);
+        if (cat === 'matches') {
+          setMatchUnreadCount((c) => Math.max(0, c - 1));
+        } else if (cat === 'gifts') {
+          setGiftUnreadCount((c) => Math.max(0, c - 1));
+        } else if (cat === 'exchanges') {
+          setExchangeUnreadCount((c) => Math.max(0, c - 1));
+        }
+        setTotalNotificationsCount((c) => Math.max(0, c - 1));
+      }
+      return prev.map((n) => (n._id === notificationId ? { ...n, isRead: true } : n));
+    });
 
     try {
       await notificationService.markNotificationAsRead(notificationId);
@@ -265,7 +282,22 @@ export const NotificationProvider = ({ children }) => {
   // Delete single notification
   const deleteNotification = useCallback(async (notificationId) => {
     if (!notificationId) return;
-    setNotifications((prev) => prev.filter((n) => n._id !== notificationId));
+
+    setNotifications((prev) => {
+      const target = prev.find((n) => n._id === notificationId);
+      if (target && !target.isRead) {
+        const cat = resolveNotificationCategory(target);
+        if (cat === 'matches') {
+          setMatchUnreadCount((c) => Math.max(0, c - 1));
+        } else if (cat === 'gifts') {
+          setGiftUnreadCount((c) => Math.max(0, c - 1));
+        } else if (cat === 'exchanges') {
+          setExchangeUnreadCount((c) => Math.max(0, c - 1));
+        }
+        setTotalNotificationsCount((c) => Math.max(0, c - 1));
+      }
+      return prev.filter((n) => n._id !== notificationId);
+    });
 
     try {
       await notificationService.deleteNotification(notificationId);

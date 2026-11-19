@@ -66,49 +66,28 @@ const markSingleNotificationAsRead = async (req, res, next) => {
 const getNotifications = async (req, res, next) => {
   try {
     const { category, isRead, unreadOnly } = req.query;
-    const filter = { recipient: req.user._id };
+    let filter;
 
-    if (unreadOnly === 'true' || isRead === 'false' || isRead === false) {
-      filter.isRead = false;
-    } else if (isRead === 'true' || isRead === true) {
-      filter.isRead = true;
-    }
+    const unreadCondition = (unreadOnly === 'true' || isRead === 'false' || isRead === false);
+    const readCondition = (isRead === 'true' || isRead === true);
 
-    if (category) {
-      if (category === 'gifts') {
-        filter.$or = [
-          { category: 'gifts' },
-          { type: 'coffee_gift' },
-          { title: { $regex: /coffee/i } },
-        ];
-      } else if (category === 'matches') {
-        filter.$or = [
-          { category: 'matches' },
-          { type: 'new_match' },
-          { title: { $regex: /match/i } },
-        ];
-      } else if (category === 'exchanges') {
-        filter.$and = [
-          {
-            $or: [
-              { category: 'exchanges' },
-              {
-                type: {
-                  $in: [
-                    'exchange_request',
-                    'exchange_accepted',
-                    'exchange_rejected',
-                    'exchange_cancelled',
-                    'exchange_completed',
-                  ],
-                },
-              },
-            ],
-          },
-          { title: { $not: /coffee/i } },
-          { type: { $ne: 'coffee_gift' } },
-        ];
-      } else {
+    if (category === 'gifts') {
+      filter = notificationService.getGiftsFilter(req.user._id, unreadCondition);
+      if (readCondition) filter.isRead = true;
+    } else if (category === 'matches') {
+      filter = notificationService.getMatchesFilter(req.user._id, unreadCondition);
+      if (readCondition) filter.isRead = true;
+    } else if (category === 'exchanges') {
+      filter = notificationService.getExchangesFilter(req.user._id, unreadCondition);
+      if (readCondition) filter.isRead = true;
+    } else {
+      filter = { recipient: req.user._id };
+      if (unreadCondition) {
+        filter.isRead = false;
+      } else if (readCondition) {
+        filter.isRead = true;
+      }
+      if (category) {
         filter.category = category;
       }
     }

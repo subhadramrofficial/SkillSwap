@@ -18,12 +18,21 @@ import {
   AlertCircle, 
   CheckCircle2, 
   PlusCircle, 
-  Users 
+  Users,
+  Trash2,
+  CheckCheck
 } from 'lucide-react';
+import { resolveNotificationCategory } from '../../services/notificationService';
 
 const ExchangeManagementPage = () => {
   const { user } = useAuth();
-  const { exchangeUnreadCount, markExchangesAsRead } = useNotifications();
+  const {
+    notifications,
+    exchangeUnreadCount,
+    markExchangesAsRead,
+    markSingleAsRead,
+    deleteNotification,
+  } = useNotifications();
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'incoming' | 'outgoing' | 'history'
   const [exchanges, setExchanges] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,6 +166,11 @@ const ExchangeManagementPage = () => {
     }
   };
 
+  const exchangeNotifications = notifications.filter(
+    (n) => resolveNotificationCategory(n) === 'exchanges'
+  );
+  const unreadExchangeNotifications = exchangeNotifications.filter((n) => !n.isRead);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full space-y-8">
       {/* Page Header */}
@@ -191,6 +205,92 @@ const ExchangeManagementPage = () => {
           </Link>
         </div>
       </div>
+
+      {/* Exchange Alerts Section */}
+      {exchangeNotifications.length > 0 && (
+        <div className="p-5 rounded-3xl bg-slate-900 border border-sky-500/30 shadow-xl space-y-4 animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+                <ArrowLeftRight className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-white text-base">Exchange Alerts</h3>
+                  {unreadExchangeNotifications.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-sky-500 text-slate-950 text-xs font-black shadow-sm">
+                      {unreadExchangeNotifications.length > 99 ? '99+' : unreadExchangeNotifications.length} unread
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Incoming requests, status updates, and peer collaboration alerts.
+                </p>
+              </div>
+            </div>
+
+            {unreadExchangeNotifications.length > 0 && (
+              <button
+                type="button"
+                onClick={markExchangesAsRead}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-400 text-xs font-semibold transition-colors self-start sm:self-auto"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>Mark all exchange alerts read</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {exchangeNotifications.map((notif) => (
+              <div
+                key={notif._id}
+                className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
+                  !notif.isRead
+                    ? 'bg-slate-800/80 border-sky-500/40 shadow-md'
+                    : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                }`}
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-sky-500/15 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0 mt-0.5">
+                    <ArrowLeftRight className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{notif.title}</p>
+                    <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{notif.message}</p>
+                    {notif.sender?.name && (
+                      <p className="text-[11px] text-sky-400 font-medium mt-1">
+                        From: {notif.sender.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!notif.isRead && (
+                    <button
+                      type="button"
+                      onClick={() => markSingleAsRead(notif._id)}
+                      title="Mark as read"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition-colors"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteNotification(notif._id)}
+                    title="Delete notification"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Global Alerts */}
       {feedback && (

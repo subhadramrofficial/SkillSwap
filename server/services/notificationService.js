@@ -4,7 +4,78 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { getIO } = require('../config/socket');
 
+const getMatchesFilter = (userId, unreadOnly = false) => {
+  const filter = {
+    recipient: new mongoose.Types.ObjectId(userId),
+    $and: [
+      {
+        $or: [
+          { category: 'matches' },
+          { type: 'new_match' },
+          { title: /match/i },
+        ],
+      },
+      { category: { $nin: ['gifts', 'exchanges'] } },
+      { type: { $ne: 'coffee_gift' } },
+    ],
+  };
+  if (unreadOnly) filter.isRead = false;
+  return filter;
+};
+
+const getGiftsFilter = (userId, unreadOnly = false) => {
+  const filter = {
+    recipient: new mongoose.Types.ObjectId(userId),
+    $and: [
+      {
+        $or: [
+          { category: 'gifts' },
+          { type: 'coffee_gift' },
+          { title: /coffee/i },
+        ],
+      },
+      { category: { $nin: ['matches', 'exchanges'] } },
+      { type: { $ne: 'new_match' } },
+    ],
+  };
+  if (unreadOnly) filter.isRead = false;
+  return filter;
+};
+
+const getExchangesFilter = (userId, unreadOnly = false) => {
+  const filter = {
+    recipient: new mongoose.Types.ObjectId(userId),
+    $and: [
+      {
+        $or: [
+          { category: 'exchanges' },
+          {
+            type: {
+              $in: [
+                'exchange_request',
+                'exchange_accepted',
+                'exchange_rejected',
+                'exchange_cancelled',
+                'exchange_completed',
+              ],
+            },
+          },
+        ],
+      },
+      { category: { $nin: ['gifts', 'matches'] } },
+      { type: { $nin: ['coffee_gift', 'new_match'] } },
+      { title: { $not: /coffee|gift|match/i } },
+    ],
+  };
+  if (unreadOnly) filter.isRead = false;
+  return filter;
+};
+
 class NotificationService {
+  getMatchesFilter = getMatchesFilter;
+  getGiftsFilter = getGiftsFilter;
+  getExchangesFilter = getExchangesFilter;
+
   /**
    * Create an exchange notification, save to MongoDB, and broadcast updated badge count via Socket.IO
    */
@@ -171,48 +242,9 @@ class NotificationService {
 
     // 1. Unread notifications counts across categories
     const [unreadExchanges, unreadMatches, unreadGifts, totalUnreadNotifications] = await Promise.all([
-      Notification.countDocuments({
-        recipient: userObjectId,
-        isRead: false,
-        $and: [
-          {
-            $or: [
-              { category: 'exchanges' },
-              {
-                type: {
-                  $in: [
-                    'exchange_request',
-                    'exchange_accepted',
-                    'exchange_rejected',
-                    'exchange_cancelled',
-                    'exchange_completed',
-                  ],
-                },
-              },
-            ],
-          },
-          { title: { $not: /coffee/i } },
-          { type: { $ne: 'coffee_gift' } },
-        ],
-      }),
-      Notification.countDocuments({
-        recipient: userObjectId,
-        isRead: false,
-        $or: [
-          { category: 'matches' },
-          { type: 'new_match' },
-          { title: /match/i },
-        ],
-      }),
-      Notification.countDocuments({
-        recipient: userObjectId,
-        isRead: false,
-        $or: [
-          { category: 'gifts' },
-          { type: 'coffee_gift' },
-          { title: /coffee/i },
-        ],
-      }),
+      Notification.countDocuments(getExchangesFilter(userObjectId, true)),
+      Notification.countDocuments(getMatchesFilter(userObjectId, true)),
+      Notification.countDocuments(getGiftsFilter(userObjectId, true)),
       Notification.countDocuments({
         recipient: userObjectId,
         isRead: false,
@@ -275,30 +307,7 @@ class NotificationService {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     await Notification.updateMany(
-      {
-        recipient: userObjectId,
-        isRead: false,
-        $and: [
-          {
-            $or: [
-              { category: 'exchanges' },
-              {
-                type: {
-                  $in: [
-                    'exchange_request',
-                    'exchange_accepted',
-                    'exchange_rejected',
-                    'exchange_cancelled',
-                    'exchange_completed',
-                  ],
-                },
-              },
-            ],
-          },
-          { title: { $not: /coffee/i } },
-          { type: { $ne: 'coffee_gift' } },
-        ],
-      },
+      getExchangesFilter(userObjectId, true),
       {
         $set: {
           isRead: true,
@@ -402,15 +411,7 @@ class NotificationService {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     await Notification.updateMany(
-      {
-        recipient: userObjectId,
-        isRead: false,
-        $or: [
-          { category: 'matches' },
-          { type: 'new_match' },
-          { title: /match/i },
-        ],
-      },
+      getMatchesFilter(userObjectId, true),
       {
         $set: {
           isRead: true,
@@ -448,15 +449,7 @@ class NotificationService {
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     await Notification.updateMany(
-      {
-        recipient: userObjectId,
-        isRead: false,
-        $or: [
-          { category: 'gifts' },
-          { type: 'coffee_gift' },
-          { title: /coffee/i },
-        ],
-      },
+      getGiftsFilter(userObjectId, true),
       {
         $set: {
           isRead: true,
