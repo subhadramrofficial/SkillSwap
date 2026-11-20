@@ -518,13 +518,17 @@ class NotificationService {
         totalUnread: counts.totalUnread,
         badges: counts,
       };
-      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
-      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+      const userIdStr = userId.toString();
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('badge_update', payload);
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('exchange_badge_update', payload);
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('notification_deleted', {
+        notificationId: notifObjectId.toString(),
+      });
     } catch (e) {
       // Socket not initialized
     }
 
-    return { success: true, badgeCounts: counts };
+    return { success: true, deletedId: notifObjectId.toString(), badgeCounts: counts };
   }
 
   /**
@@ -551,8 +555,12 @@ class NotificationService {
         totalUnread: counts.totalUnread,
         badges: counts,
       };
-      io.to(`user:${userId.toString()}`).emit('badge_update', payload);
-      io.to(`user:${userId.toString()}`).emit('exchange_badge_update', payload);
+      const userIdStr = userId.toString();
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('badge_update', payload);
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('exchange_badge_update', payload);
+      io.to(`user:${userIdStr}`).to(`user_${userIdStr}`).emit('read_notifications_deleted', {
+        deletedCount: result.deletedCount,
+      });
     } catch (e) {
       // Socket not initialized
     }

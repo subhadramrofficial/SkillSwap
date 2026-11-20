@@ -108,6 +108,12 @@ const getNotifications = async (req, res, next) => {
       ? await Notification.countDocuments({ ...filter, isRead: false })
       : unreadCount;
 
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+
     return successResponse(res, 200, 'Notifications retrieved', {
       notifications,
       unreadCount,
